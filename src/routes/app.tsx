@@ -338,9 +338,9 @@ function KnowledgeTab() {
 function AnalyticsTab() {
   const fn = useServerFn(getAnalytics);
   const a = useQuery({ queryKey: ["analytics"], queryFn: () => fn() });
-  if (a.isLoading) return <div className="p-8"><Loader2 className="animate-spin" /></div>;
-  const t = a.data?.totals;
-  if (!t) return null;
+  if (a.isLoading || !a.data) return <div className="p-8"><Loader2 className="animate-spin" /></div>;
+  const data = a.data;
+  const t = data.totals;
   const cards = [
     { label: "Total queries", value: t.queries },
     { label: "Out-of-scope rejected", value: t.rejected },

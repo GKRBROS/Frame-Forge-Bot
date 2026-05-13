@@ -445,6 +445,134 @@ export const ensureAdminBootstrap = createServerFn({ method: "POST" })
     return { promoted: false };
   });
 
+// ============ PUBLIC ASK (no auth) ============
+// Anonymous visitors can ask questions; we search across the admin's knowledge base.
+
+async function getAdminUserId(): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("user_roles")
+    .select("user_id")
+    .eq("role", "admin")
+    .limit(1)
+    .maybeSingle();
+  return data?.user_id ?? null;
+}
+
+export const askPublic = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z.object({ question: z.string().trim().min(1).max(2000) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const start = Date.now();
+    const adminId = await getAdminUserId();
+    const { data: settings } = await supabaseAdmin.from("ai_settings").select("*").eq("id", 1).single();
+    const threshold = Number(settings?.confidence_threshold ?? 0.15);
+    const model = settings?.active_model ?? "deepseek/deepseek-chat-v3.1";
+    const fallback = settings?.fallback_model ?? null;
+    const strict = settings?.strict_knowledge ?? true;
+
+    if (!adminId) {
+      return {
+        content: "The knowledge base is not yet set up. Please ask the administrator to upload documents.",
+        citations: [], confidence: 0, rejected: true, latencyMs: Date.now() - start, model,
+      };
+    }
+
+    const { data: hits, error: searchErr } = await supabaseAdmin.rpc("search_chunks", {
+      _user_id: adminId, _query: data.question, _limit: 8,
+    });
+    if (searchErr) throw new Error(`Retrieval failed: ${searchErr.message}`);
+
+    const results = (hits ?? []) as Array<{
+      chunk_id: string; document_id: string; document_title: string; content: string; score: number;
+    }>;
+    const topScore = results[0]?.score ?? 0;
+    const confidence = Math.min(1, topScore / 1.0);
+
+    if (strict && (results.length === 0 || confidence < threshold)) {
+      return {
+        content: "Sorry, this is outside my knowledge scope.",
+        citations: [], confidence, rejected: true, latencyMs: Date.now() - start, model,
+      };
+    }
+
+    const contextBlock = results
+      .map((r, i) => `[${i + 1}] (source: ${r.document_title})\n${r.content}`)
+      .join("\n\n---\n\n");
+
+    const messages: ChatMessage[] = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
+    ];
+
+    const aiResult = await chatComplete({
+      model, fallbackModel: fallback, messages,
+      temperature: Number(settings?.temperature ?? 0.2),
+      maxTokens: settings?.max_tokens ?? 1024,
+    });
+
+    const wasRejected = /outside my knowledge scope/i.test(aiResult.content);
+    const citations = results.map((r, i) => ({
+      n: i + 1, document_id: r.document_id, document_title: r.document_title,
+      excerpt: r.content.slice(0, 280), score: r.score,
+    }));
+
+    return {
+      content: aiResult.content, citations, confidence,
+      rejected: wasRejected, latencyMs: Date.now() - start, model: aiResult.model,
+    };
+  });
+
+// ============ ADMIN ACCOUNT BOOTSTRAP (hardcoded credentials) ============
+// Ensures the admin account exists with known credentials so the admin can sign in.
+export const ensureAdminAccount = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z.object({
+      email: z.string().email(),
+      password: z.string().min(6).max(200),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    if (data.email.toLowerCase() !== ADMIN_EMAIL) {
+      throw new Error("Only the designated admin account can be provisioned.");
+    }
+
+    // Check if user exists
+    const { data: existing } = await supabaseAdmin.auth.admin.listUsers();
+    const found = existing?.users?.find((u) => u.email?.toLowerCase() === ADMIN_EMAIL);
+
+    let userId: string;
+    if (!found) {
+      const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+        email: data.email,
+        password: data.password,
+        email_confirm: true,
+        user_metadata: { display_name: "Administrator" },
+      });
+      if (error || !created.user) throw new Error(error?.message ?? "Failed to create admin user");
+      userId = created.user.id;
+    } else {
+      userId = found.id;
+      // Make sure password matches what we expect (idempotent reset)
+      await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password: data.password,
+        email_confirm: true,
+      });
+    }
+
+    // Ensure profile + admin role
+    await supabaseAdmin.from("profiles").upsert(
+      { user_id: userId, display_name: "Administrator" },
+      { onConflict: "user_id" },
+    );
+    await supabaseAdmin.from("user_roles").upsert(
+      { user_id: userId, role: "admin" },
+      { onConflict: "user_id,role" },
+    );
+
+    return { ok: true };
+  });
+
 // ============ ANALYTICS ============
 
 export const getAnalytics = createServerFn({ method: "GET" })
