@@ -89,7 +89,7 @@ function ChatHome() {
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <Link
-            to="/adm"
+            to="/login"
             className="px-3 py-2 rounded-full glass text-xs font-medium hover:border-primary transition flex items-center gap-1.5"
           >
             <Shield className="w-3.5 h-3.5" /> Admin

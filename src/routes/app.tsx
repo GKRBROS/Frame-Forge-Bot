@@ -41,7 +41,7 @@ function AppShell() {
   }, [user]);
 
   useEffect(() => {
-    if (!loading && !user) nav({ to: "/adm" });
+    if (!loading && !user) nav({ to: "/login" });
   }, [user, loading, nav]);
 
   if (loading || !user) {

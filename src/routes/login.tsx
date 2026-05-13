@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ensureAdminAccount } from "@/lib/rag.functions";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-export const Route = createFileRoute("/adm")({
+export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Admin sign-in — KnowledgeScope AI" }] }),
   component: AdminLogin,
 });
