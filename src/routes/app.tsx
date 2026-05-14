@@ -9,7 +9,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  listDocuments, ingestText, ingestUploadedFile, deleteDocument, toggleDocument,
+  listDocuments, ingestText, ingestUploadedFile, ingestUrl, deleteDocument, toggleDocument,
   getAiSettings, updateAiSettings, listConversations, getMessages, createConversation,
   deleteConversation, askQuestion, getMyRole, ensureAdminBootstrap, getAnalytics,
   listUsers, setUserAdmin,
@@ -240,33 +240,50 @@ function KnowledgeTab() {
   const list = useServerFn(listDocuments);
   const ingestT = useServerFn(ingestText);
   const ingestF = useServerFn(ingestUploadedFile);
+  const ingestU = useServerFn(ingestUrl);
   const del = useServerFn(deleteDocument);
   const tog = useServerFn(toggleDocument);
 
   const docs = useQuery({ queryKey: ["docs"], queryFn: () => list() });
-  const [mode, setMode] = useState<"upload" | "paste">("paste");
+  const [mode, setMode] = useState<"upload" | "paste" | "url">("paste");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
 
   async function submitText(e: React.FormEvent) {
     e.preventDefault();
-    setErr(""); setBusy(true);
+    setErr(""); setOk(""); setBusy(true);
     try {
       await ingestT({ data: { title, content: text } });
-      setTitle(""); setText(""); qc.invalidateQueries({ queryKey: ["docs"] });
+      setTitle(""); setText("");
+      setOk("Indexed successfully");
+      qc.invalidateQueries({ queryKey: ["docs"] });
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  async function submitUrl(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(""); setOk(""); setBusy(true);
+    try {
+      const r = await ingestU({ data: { url } });
+      setUrl("");
+      setOk(`Scraped “${r.title}” — ${r.chunkCount} chunks`);
+      qc.invalidateQueries({ queryKey: ["docs"] });
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
   async function uploadFile(file: File) {
-    setErr(""); setBusy(true);
+    setErr(""); setOk(""); setBusy(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
       const path = `${userData.user!.id}/${Date.now()}-${file.name}`;
       const { error: upErr } = await supabase.storage.from("knowledge-documents").upload(path, file);
       if (upErr) throw upErr;
-      await ingestF({ data: { filePath: path, title: file.name, mimeType: file.type || "text/plain" } });
+      await ingestF({ data: { filePath: path, title: file.name, mimeType: file.type || "application/octet-stream" } });
+      setOk(`Indexed ${file.name}`);
       qc.invalidateQueries({ queryKey: ["docs"] });
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
@@ -275,14 +292,15 @@ function KnowledgeTab() {
     <div className="h-screen overflow-y-auto p-8">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-3xl font-display font-bold mb-2">Knowledge Base</h1>
-        <p className="text-muted-foreground mb-8">Upload .txt .md .csv .json files or paste text. Each document is chunked and indexed for retrieval.</p>
+        <p className="text-muted-foreground mb-8">Upload PDFs, Word docs, text, CSV, images (OCR), scrape a web page, or paste text directly.</p>
 
         <div className="glass-card rounded-2xl p-6 mb-8">
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-4 flex-wrap">
             <button onClick={() => setMode("paste")} className={`px-4 py-2 rounded-lg text-sm ${mode === "paste" ? "bg-primary/15 text-primary border border-primary/30" : "glass"}`}>Paste text</button>
             <button onClick={() => setMode("upload")} className={`px-4 py-2 rounded-lg text-sm ${mode === "upload" ? "bg-primary/15 text-primary border border-primary/30" : "glass"}`}>Upload file</button>
+            <button onClick={() => setMode("url")} className={`px-4 py-2 rounded-lg text-sm ${mode === "url" ? "bg-primary/15 text-primary border border-primary/30" : "glass"}`}>Scrape URL</button>
           </div>
-          {mode === "paste" ? (
+          {mode === "paste" && (
             <form onSubmit={submitText} className="space-y-3">
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Document title" required
                 className="w-full px-4 py-3 rounded-lg bg-input border border-border focus:border-primary outline-none" />
@@ -292,16 +310,27 @@ function KnowledgeTab() {
                 {busy ? "Indexing…" : "Add to knowledge base"}
               </button>
             </form>
-          ) : (
+          )}
+          {mode === "upload" && (
             <label className="block border-2 border-dashed border-border rounded-xl p-10 text-center cursor-pointer hover:border-primary transition">
               <Upload className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
-              <div className="font-medium">Click to upload</div>
-              <div className="text-xs text-muted-foreground mt-1">.txt .md .csv .json .xml .html — up to ~2 MB</div>
-              <input type="file" className="hidden" accept=".txt,.md,.csv,.json,.xml,.html,text/*"
+              <div className="font-medium">{busy ? "Processing…" : "Click to upload"}</div>
+              <div className="text-xs text-muted-foreground mt-1">PDF · DOCX · TXT · MD · CSV · JSON · HTML · PNG/JPG (OCR) — any format</div>
+              <input type="file" className="hidden" accept="*/*" disabled={busy}
                 onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])} />
             </label>
           )}
+          {mode === "url" && (
+            <form onSubmit={submitUrl} className="space-y-3">
+              <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/article" required
+                className="w-full px-4 py-3 rounded-lg bg-input border border-border focus:border-primary outline-none" />
+              <button disabled={busy} className="px-5 py-2.5 rounded-lg bg-hero-gradient text-primary-foreground font-medium glow-hover disabled:opacity-50">
+                {busy ? "Scraping…" : "Scrape & index page"}
+              </button>
+            </form>
+          )}
           {err && <div className="text-sm text-destructive mt-3">{err}</div>}
+          {ok && <div className="text-sm text-success mt-3">{ok}</div>}
         </div>
 
         <div className="space-y-2">
@@ -311,7 +340,7 @@ function KnowledgeTab() {
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{d.title}</div>
                 <div className="text-xs text-muted-foreground">
-                  {d.chunk_count} chunks · {d.status}
+                  {d.source_type ?? "text"} · {d.chunk_count} chunks · {d.status}
                   {d.error_message && <span className="text-destructive"> — {d.error_message}</span>}
                 </div>
               </div>
@@ -479,12 +508,12 @@ function AdminTab() {
           <h2 className="font-display font-semibold mb-4">AI control panel</h2>
           <div className="grid md:grid-cols-2 gap-3">
             {[
-              { k: "strict_knowledge", label: "Strict knowledge mode", desc: "Only answer from indexed docs" },
-              { k: "out_of_scope_rejection", label: "Out-of-scope rejection", desc: "Reply with refusal when no match" },
+              { k: "strict_knowledge", label: "Strict knowledge mode", desc: "Only answer from indexed docs (web fallback only when allowed below)" },
+              { k: "out_of_scope_rejection", label: "Out-of-scope rejection", desc: "Reply with refusal when no match found" },
               { k: "hallucination_prevention", label: "Hallucination prevention", desc: "Reinforced via system prompt" },
-              { k: "allow_internet", label: "Internet access", desc: "Disabled in v1", disabled: true },
-              { k: "allow_web_scraping", label: "Web scraping", desc: "Disabled in v1", disabled: true },
-              { k: "enable_ocr", label: "OCR extraction", desc: "Roadmap" },
+              { k: "allow_internet", label: "Internet access", desc: "Live web search fallback when KB confidence is low" },
+              { k: "allow_web_scraping", label: "Web scraping", desc: "Allow indexing pages by URL in Knowledge tab" },
+              { k: "enable_ocr", label: "OCR (images)", desc: "Vision model extracts text from uploaded images" },
               { k: "image_extraction", label: "Image extraction", desc: "Roadmap" },
             ].map((t) => (
               <div key={t.k} className="flex items-center justify-between glass rounded-lg p-3">
@@ -492,7 +521,7 @@ function AdminTab() {
                   <div className="text-sm font-medium">{t.label}</div>
                   <div className="text-xs text-muted-foreground">{t.desc}</div>
                 </div>
-                <button disabled={t.disabled} onClick={() => toggle(t.k)}
+                <button onClick={() => toggle(t.k)}
                   className={`w-10 h-6 rounded-full transition ${s[t.k as keyof typeof s] ? "bg-primary" : "bg-secondary"} disabled:opacity-40`}>
                   <span className={`block w-5 h-5 bg-white rounded-full transition ${s[t.k as keyof typeof s] ? "translate-x-4" : "translate-x-0.5"}`} />
                 </button>
