@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { chunkText, approxTokens } from "./chunker.server";
 import { extractTextFromBlob } from "./extract.server";
 import { chatComplete, type ChatMessage } from "./openrouter.server";
+import { scrapeUrl, webSearch } from "./web.server";
 
 // ============ DOCUMENTS ============
 
@@ -107,7 +108,7 @@ export const ingestUploadedFile = createServerFn({ method: "POST" })
         .download(data.filePath);
       if (dlErr || !blob) throw new Error(dlErr?.message ?? "Failed to download file");
 
-      const text = await extractTextFromBlob(blob, data.mimeType);
+      const text = await extractTextFromBlob(blob, data.mimeType, data.title);
       const chunks = chunkText(text);
       if (chunks.length === 0) throw new Error("No extractable text in file");
 
