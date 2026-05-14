@@ -12,12 +12,11 @@ export const Route = createFileRoute("/login")({
   component: AdminLogin,
 });
 
-
 function AdminLogin() {
   const nav = useNavigate();
   const ensure = useServerFn(ensureAdminAccount);
-  const [email, setEmail] = useState(ADMIN_EMAIL);
-  const [password, setPassword] = useState(ADMIN_PASSWORD);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -25,18 +24,10 @@ function AdminLogin() {
     e.preventDefault();
     setErr(""); setLoading(true);
 
-    if (email.trim().toLowerCase() !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-      setErr("Invalid administrator credentials.");
-      setLoading(false);
-      return;
-    }
-
     try {
-      // Make sure the admin account exists with these credentials, then sign in.
-      await ensure({ data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
-      const { error } = await supabase.auth.signInWithPassword({
-        email: ADMIN_EMAIL, password: ADMIN_PASSWORD,
-      });
+      // Ask the server to ensure the admin account exists (server validates against .env).
+      await ensure({ data: { email: email.trim().toLowerCase(), password } });
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (error) throw error;
       nav({ to: "/app" });
     } catch (e) {

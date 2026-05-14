@@ -22,7 +22,7 @@ export type ChatResult = {
 
 async function callOnce(model: string, opts: ChatOptions): Promise<ChatResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+  if (!apiKey) throw new Error("OpenRouter API key is not configured.");
 
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",

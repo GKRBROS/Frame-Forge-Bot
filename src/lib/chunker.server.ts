@@ -1,6 +1,9 @@
-// Semantic-ish chunker: splits text into ~target-size chunks on paragraph/sentence boundaries with overlap.
-const TARGET = 900;
-const OVERLAP = 120;
+// Semantic-ish chunker: splits text into ~target-size chunks (by tokens) on paragraph/sentence boundaries with overlap.
+// Aim for 500-1200 token chunks (default ~900 tokens) with overlap 100-200 tokens.
+const TARGET_TOKENS = 900; // preferred tokens per chunk
+const OVERLAP_TOKENS = 140; // overlap in tokens
+const TARGET = TARGET_TOKENS * 4; // approximate chars (approxTokens uses /4)
+const OVERLAP = OVERLAP_TOKENS * 4;
 
 export function chunkText(raw: string): string[] {
   const text = raw.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();

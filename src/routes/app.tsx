@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   Sparkles, MessageSquare, Database, Settings, Shield, BarChart3,
   Plus, Upload, Trash2, LogOut, Send, FileText, AlertCircle, CheckCircle2, Loader2,
+  BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,7 +26,7 @@ type Tab = "chat" | "knowledge" | "analytics" | "admin" | "settings";
 function AppShell() {
   const { user, loading, signOut } = useAuth();
   const nav = useNavigate();
-  const [tab, setTab] = useState<Tab>("chat");
+  const [tab, setTab] = useState<Tab>("knowledge");
   const ensureAdmin = useServerFn(ensureAdminBootstrap);
   const roleFn = useServerFn(getMyRole);
 
@@ -51,7 +52,6 @@ function AppShell() {
   const isAdmin = role.data?.isAdmin ?? false;
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; admin?: boolean }[] = [
-    { id: "chat", label: "Chat", icon: MessageSquare },
     { id: "knowledge", label: "Knowledge", icon: Database },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "admin", label: "Admin", icon: Shield, admin: true },
@@ -80,7 +80,6 @@ function AppShell() {
         </div>
       </aside>
       <main className="flex-1 overflow-hidden">
-        {tab === "chat" && <ChatTab />}
         {tab === "knowledge" && <KnowledgeTab />}
         {tab === "analytics" && <AnalyticsTab />}
         {tab === "admin" && isAdmin && <AdminTab />}
@@ -99,6 +98,15 @@ function ChatTab() {
   const delConv = useServerFn(deleteConversation);
   const ask = useServerFn(askQuestion);
 
+  const SUGGESTIONS = [
+    "What topics can you help with?",
+    "Summarize the latest document",
+    "Give me the key points",
+    "What does the policy say about…",
+  ];
+
+  const [showCitations, setShowCitations] = useState(false);
+
   const convs = useQuery({ queryKey: ["convs"], queryFn: () => listConv() });
   const [activeId, setActiveId] = useState<string | null>(null);
   useEffect(() => {
@@ -111,8 +119,11 @@ function ChatTab() {
     enabled: !!activeId,
   });
 
+  const [level, setLevel] = useState<'beginner'|'intermediate'|'advanced'>('beginner');
+
   const askM = useMutation({
-    mutationFn: (q: string) => ask({ data: { conversationId: activeId!, question: q } }),
+    mutationFn: (payload: { q: string; level: 'beginner'|'intermediate'|'advanced' }) =>
+      ask({ data: { conversationId: activeId!, question: payload.q, level: payload.level } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["msgs", activeId] });
       qc.invalidateQueries({ queryKey: ["convs"] });
@@ -146,7 +157,7 @@ function ChatTab() {
       ...(old ?? []),
       { id: "tmp", role: "user", content: q, created_at: new Date().toISOString() },
     ]);
-    askM.mutate(q);
+    askM.mutate({ q, level });
   }
 
   return (
@@ -177,9 +188,17 @@ function ChatTab() {
                 <Sparkles className="w-10 h-10 text-primary mx-auto mb-4" />
                 <h2 className="text-2xl font-display font-bold mb-2">Ask your knowledge base</h2>
                 <p className="text-sm text-muted-foreground">Answers come strictly from documents you've uploaded.</p>
+                <div className="grid sm:grid-cols-2 gap-2 max-w-xl mx-auto mt-6">
+                  {SUGGESTIONS.map((s) => (
+                    <button key={s} onClick={() => setInput(s)} className="text-left text-sm glass-card rounded-xl px-4 py-3 hover:border-primary transition">
+                      <BookOpen className="w-4 h-4 text-primary inline mr-2" />
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
-            {msgs.data?.map((m: any) => <MessageBubble key={m.id} m={m} />)}
+            {msgs.data?.map((m: any) => <MessageBubble key={m.id} m={m} showCitations={showCitations} />)}
             {askM.isPending && (
               <div className="flex gap-3">
                 <div className="w-8 h-8 rounded-lg bg-hero-gradient flex items-center justify-center shrink-0"><Sparkles className="w-4 h-4 text-primary-foreground" /></div>
@@ -194,6 +213,15 @@ function ChatTab() {
           <div className="max-w-3xl mx-auto flex gap-2">
             <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask anything from your knowledge base…"
               className="flex-1 px-4 py-3 rounded-xl bg-input border border-border focus:border-primary outline-none" />
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setLevel('beginner')} className={`px-3 py-2 rounded-lg text-xs ${level==='beginner' ? 'bg-primary/15 text-primary' : 'glass'}`}>Beginner</button>
+              <button type="button" onClick={() => setLevel('intermediate')} className={`px-3 py-2 rounded-lg text-xs ${level==='intermediate' ? 'bg-primary/15 text-primary' : 'glass'}`}>Intermediate</button>
+              <button type="button" onClick={() => setLevel('advanced')} className={`px-3 py-2 rounded-lg text-xs ${level==='advanced' ? 'bg-primary/15 text-primary' : 'glass'}`}>Advanced</button>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-muted-foreground">Show citations</label>
+              <input type="checkbox" checked={showCitations} onChange={(e) => setShowCitations(e.target.checked)} />
+            </div>
             <button disabled={askM.isPending || !input.trim()} className="px-5 py-3 rounded-xl bg-hero-gradient text-primary-foreground font-medium glow-hover disabled:opacity-50">
               <Send className="w-4 h-4" />
             </button>
@@ -204,7 +232,7 @@ function ChatTab() {
   );
 }
 
-function MessageBubble({ m }: { m: any }) {
+function MessageBubble({ m, showCitations }: { m: any; showCitations?: boolean }) {
   const isUser = m.role === "user";
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -216,15 +244,20 @@ function MessageBubble({ m }: { m: any }) {
         {m.confidence != null && !isUser && (
           <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
             {m.rejected ? <AlertCircle className="w-3 h-3 text-warning" /> : <CheckCircle2 className="w-3 h-3 text-success" />}
-            confidence {(Number(m.confidence) * 100).toFixed(0)}% · {m.model ?? ""}
+            confidence {(Number(m.confidence) * 100).toFixed(0)}%
           </div>
         )}
-        {Array.isArray(m.citations) && m.citations.length > 0 && (
-          <div className="mt-3 space-y-1.5">
+        {showCitations && m.citations && m.citations.length > 0 && (
+          <div className="mt-3 space-y-2">
             {m.citations.map((c: any) => (
-              <div key={c.n} className="text-xs glass rounded-lg px-2.5 py-1.5">
-                <span className="text-primary font-mono">[{c.n}]</span> <span className="font-medium">{c.document_title}</span>
-                <div className="text-muted-foreground mt-1 line-clamp-2">{c.excerpt}</div>
+              <div key={c.n} className="glass rounded-lg p-2.5 text-xs flex gap-2">
+                <span className="shrink-0 w-5 h-5 rounded grid place-items-center bg-primary/15 text-primary font-semibold">{c.n}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1 font-medium text-foreground truncate">
+                    <FileText className="w-3 h-3" /> {c.document_title}
+                  </div>
+                  <div className="text-muted-foreground line-clamp-2 mt-0.5">{c.excerpt}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -275,17 +308,50 @@ function KnowledgeTab() {
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
-  async function uploadFile(file: File) {
-    setErr(""); setOk(""); setBusy(true);
+  async function uploadFiles(files: File[]) {
+    setErr("");
+    setOk("");
+    setBusy(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
-      const path = `${userData.user!.id}/${Date.now()}-${file.name}`;
-      const { error: upErr } = await supabase.storage.from("knowledge-documents").upload(path, file);
-      if (upErr) throw upErr;
-      await ingestF({ data: { filePath: path, title: file.name, mimeType: file.type || "application/octet-stream" } });
-      setOk(`Indexed ${file.name}`);
-      qc.invalidateQueries({ queryKey: ["docs"] });
-    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+      const userId = userData.user!.id;
+      const results = await Promise.allSettled(
+        files.map(async (file) => {
+          const path = `${userId}/${Date.now()}-${file.name}`;
+          const { error: upErr } = await supabase.storage.from("knowledge-documents").upload(path, file);
+          if (upErr) throw upErr;
+          await ingestF({ data: { filePath: path, title: file.name, mimeType: file.type || "application/octet-stream" } });
+          return file.name;
+        }),
+      );
+
+      const succeeded = results.filter((result): result is PromiseFulfilledResult<string> => result.status === "fulfilled");
+      const failed = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+
+      if (succeeded.length > 0) {
+        setOk(
+          succeeded.length === 1
+            ? `Indexed ${succeeded[0].value}`
+            : `Indexed ${succeeded.length} files: ${succeeded.map((result) => result.value).join(", ")}`,
+        );
+      }
+      if (failed.length > 0) {
+        setErr(
+          failed.length === 1
+            ? failed[0].reason instanceof Error
+              ? failed[0].reason.message
+              : String(failed[0].reason)
+            : `${failed.length} files failed to upload or index`,
+        );
+      }
+      if (succeeded.length > 0) {
+        qc.invalidateQueries({ queryKey: ["docs"] });
+      }
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -316,8 +382,18 @@ function KnowledgeTab() {
               <Upload className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
               <div className="font-medium">{busy ? "Processing…" : "Click to upload"}</div>
               <div className="text-xs text-muted-foreground mt-1">PDF · DOCX · TXT · MD · CSV · JSON · HTML · PNG/JPG (OCR) — any format</div>
-              <input type="file" className="hidden" accept="*/*" disabled={busy}
-                onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])} />
+              <input
+                type="file"
+                className="hidden"
+                accept="*/*"
+                multiple
+                disabled={busy}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.currentTarget.value = "";
+                  if (files.length > 0) uploadFiles(files);
+                }}
+              />
             </label>
           )}
           {mode === "url" && (
@@ -367,9 +443,29 @@ function KnowledgeTab() {
 function AnalyticsTab() {
   const fn = useServerFn(getAnalytics);
   const a = useQuery({ queryKey: ["analytics"], queryFn: () => fn() });
+  const [logSearch, setLogSearch] = useState("");
+  const [logFrom, setLogFrom] = useState("");
+  const [logTo, setLogTo] = useState("");
   if (a.isLoading || !a.data) return <div className="p-8"><Loader2 className="animate-spin" /></div>;
   const data = a.data;
   const t = data.totals;
+  const filteredLogs = useMemo(() => {
+    const query = logSearch.trim().toLowerCase();
+    const fromMs = logFrom ? new Date(`${logFrom}T00:00:00`).getTime() : null;
+    const toMs = logTo ? new Date(`${logTo}T23:59:59.999`).getTime() : null;
+
+    return (data.recentLogs ?? []).filter((log: any) => {
+      const createdAt = new Date(log.created_at).getTime();
+      const text = [log.question, log.event_label, log.event_type, log.model]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const matchesText = !query || text.includes(query);
+      const matchesFrom = fromMs == null || createdAt >= fromMs;
+      const matchesTo = toMs == null || createdAt <= toMs;
+      return matchesText && matchesFrom && matchesTo;
+    });
+  }, [data.recentLogs, logFrom, logSearch, logTo]);
   const cards = [
     { label: "Total queries", value: t.queries },
     { label: "Out-of-scope rejected", value: t.rejected },
@@ -423,6 +519,79 @@ function AnalyticsTab() {
               </div>
             ))}
             {a.data.recentRejected?.length === 0 && <div className="text-sm text-muted-foreground">None — model has never been forced to reject.</div>}
+          </div>
+        </div>
+
+        <div className="glass-card rounded-2xl p-6 mt-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-4">
+            <div>
+              <h2 className="font-display font-semibold">Activity logs</h2>
+              <p className="text-xs text-muted-foreground">All chat opens and question logs with search and date filtering.</p>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Showing {filteredLogs.length} of {(a.data.recentLogs ?? []).length} entries
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3 mb-4">
+            <label className="block">
+              <span className="text-[11px] text-muted-foreground">Search</span>
+              <input
+                value={logSearch}
+                onChange={(e) => setLogSearch(e.target.value)}
+                placeholder="Search question, model, or label"
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-input border border-border outline-none focus:border-primary"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-muted-foreground">From date</span>
+              <input
+                type="date"
+                value={logFrom}
+                onChange={(e) => setLogFrom(e.target.value)}
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-input border border-border outline-none focus:border-primary"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-muted-foreground">To date</span>
+              <input
+                type="date"
+                value={logTo}
+                onChange={(e) => setLogTo(e.target.value)}
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-input border border-border outline-none focus:border-primary"
+              />
+            </label>
+          </div>
+          <div className="space-y-2 max-h-112 overflow-y-auto pr-1">
+            {filteredLogs.map((log: any, i: number) => {
+              const isOpen = log.event_type === "chat_open";
+              return (
+                <div key={`${log.created_at}-${i}`} className="glass rounded-lg px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">
+                        {isOpen ? "Chat opened" : "Question asked"}
+                        {log.event_label ? <span className="text-muted-foreground font-normal"> · {log.event_label}</span> : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {log.question}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right text-xs text-muted-foreground">
+                      <div>{new Date(log.created_at).toLocaleString()}</div>
+                      <div>
+                        {isOpen ? "open" : `${(Number(log.confidence ?? 0) * 100).toFixed(0)}%`} · {log.latency_ms ?? 0} ms
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="px-2 py-0.5 rounded-full bg-secondary/60">{log.event_type ?? "question"}</span>
+                    {log.rejected ? <span className="px-2 py-0.5 rounded-full bg-destructive/20 text-destructive">rejected</span> : null}
+                    {log.model ? <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary">{log.model}</span> : null}
+                  </div>
+                </div>
+              );
+            })}
+            {filteredLogs.length === 0 && <div className="text-sm text-muted-foreground">No logs match the current filters.</div>}
           </div>
         </div>
       </div>
