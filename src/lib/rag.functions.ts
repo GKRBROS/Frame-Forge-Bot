@@ -134,6 +134,55 @@ export const ingestUploadedFile = createServerFn({ method: "POST" })
     }
   });
 
+export const ingestUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({
+      url: z.string().url(),
+      collection: z.string().trim().max(80).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const page = await scrapeUrl(data.url);
+    if (!page.text || page.text.length < 40) throw new Error("Page had no extractable text");
+
+    const { data: doc, error: docErr } = await supabase
+      .from("documents")
+      .insert({
+        user_id: userId,
+        title: page.title.slice(0, 200),
+        source_type: "url",
+        source_url: page.url,
+        mime_type: "text/html",
+        byte_size: page.text.length,
+        status: "processing",
+        collection: data.collection ?? "default",
+      })
+      .select()
+      .single();
+    if (docErr || !doc) throw new Error(docErr?.message ?? "Failed to create document");
+
+    try {
+      const chunks = chunkText(page.text);
+      const rows = chunks.map((content, i) => ({
+        document_id: doc.id,
+        user_id: userId,
+        chunk_index: i,
+        content,
+        tokens: approxTokens(content),
+      }));
+      const { error: chErr } = await supabase.from("chunks").insert(rows);
+      if (chErr) throw new Error(chErr.message);
+      await supabase.from("documents").update({ status: "ready", chunk_count: chunks.length }).eq("id", doc.id);
+      return { documentId: doc.id, chunkCount: chunks.length, url: page.url, title: page.title };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Indexing failed";
+      await supabase.from("documents").update({ status: "failed", error_message: msg }).eq("id", doc.id);
+      throw err;
+    }
+  });
+
 export const deleteDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
