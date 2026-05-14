@@ -569,6 +569,7 @@ export const askPublic = createServerFn({ method: "POST" })
     const model = settings?.active_model ?? "deepseek/deepseek-chat-v3.1";
     const fallback = settings?.fallback_model ?? null;
     const strict = settings?.strict_knowledge ?? true;
+    const allowInternet = settings?.allow_internet ?? false;
 
     if (!adminId) {
       return {
@@ -587,20 +588,31 @@ export const askPublic = createServerFn({ method: "POST" })
     }>;
     const topScore = results[0]?.score ?? 0;
     const confidence = Math.min(1, topScore / 1.0);
+    const lowConfidence = results.length === 0 || confidence < threshold;
 
-    if (strict && (results.length === 0 || confidence < threshold)) {
+    let webCitations: Array<{ n: number; document_id: string; document_title: string; excerpt: string; score: number }> = [];
+    let webContextItems: string[] = [];
+    if (allowInternet && lowConfidence) {
+      const w = await fetchWebContext(data.question, 4);
+      webCitations = w.citations;
+      webContextItems = w.contextItems;
+    }
+
+    if (strict && lowConfidence && webContextItems.length === 0) {
       return {
         content: "Sorry, this is outside my knowledge scope.",
         citations: [], confidence, rejected: true, latencyMs: Date.now() - start, model,
       };
     }
 
-    const contextBlock = results
+    const kbBlock = results
       .map((r, i) => `[${i + 1}] (source: ${r.document_title})\n${r.content}`)
       .join("\n\n---\n\n");
+    const contextBlock = [kbBlock, ...webContextItems].filter(Boolean).join("\n\n---\n\n");
+    const useWeb = webContextItems.length > 0;
 
     const messages: ChatMessage[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
       { role: "user", content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
     ];
 
@@ -611,10 +623,12 @@ export const askPublic = createServerFn({ method: "POST" })
     });
 
     const wasRejected = /outside my knowledge scope/i.test(aiResult.content);
-    const citations = results.map((r, i) => ({
+    const kbCitations = results.map((r, i) => ({
       n: i + 1, document_id: r.document_id, document_title: r.document_title,
       excerpt: r.content.slice(0, 280), score: r.score,
     }));
+    const webCitationsOffset = webCitations.map((c) => ({ ...c, n: kbCitations.length + c.n }));
+    const citations = [...kbCitations, ...webCitationsOffset];
 
     return {
       content: aiResult.content, citations, confidence,
