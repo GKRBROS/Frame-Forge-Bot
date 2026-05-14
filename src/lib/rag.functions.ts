@@ -472,13 +472,15 @@ export const askQuestion = createServerFn({ method: "POST" })
     // Detect "outside scope" answer to flag rejection in analytics
     const wasRejected = /outside my knowledge scope/i.test(aiResult.content);
 
-    const citations = results.map((r, i) => ({
+    const kbCitations = results.map((r, i) => ({
       n: i + 1,
       document_id: r.document_id,
       document_title: r.document_title,
       excerpt: r.content.slice(0, 280),
       score: r.score,
     }));
+    const webCitationsOffset = webCitations.map((c) => ({ ...c, n: kbCitations.length + c.n }));
+    const citations = [...kbCitations, ...webCitationsOffset];
 
     const latency = Date.now() - start;
     const { data: assistantMsg, error: insErr } = await supabase.from("messages").insert({
