@@ -16,8 +16,8 @@ export const Route = createFileRoute("/login")({
 function AdminLogin() {
   const nav = useNavigate();
   const ensure = useServerFn(ensureAdminAccount);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(ADMIN_EMAIL);
+  const [password, setPassword] = useState(ADMIN_PASSWORD);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
