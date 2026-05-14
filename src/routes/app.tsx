@@ -508,12 +508,12 @@ function AdminTab() {
           <h2 className="font-display font-semibold mb-4">AI control panel</h2>
           <div className="grid md:grid-cols-2 gap-3">
             {[
-              { k: "strict_knowledge", label: "Strict knowledge mode", desc: "Only answer from indexed docs" },
-              { k: "out_of_scope_rejection", label: "Out-of-scope rejection", desc: "Reply with refusal when no match" },
+              { k: "strict_knowledge", label: "Strict knowledge mode", desc: "Only answer from indexed docs (web fallback only when allowed below)" },
+              { k: "out_of_scope_rejection", label: "Out-of-scope rejection", desc: "Reply with refusal when no match found" },
               { k: "hallucination_prevention", label: "Hallucination prevention", desc: "Reinforced via system prompt" },
-              { k: "allow_internet", label: "Internet access", desc: "Disabled in v1", disabled: true },
-              { k: "allow_web_scraping", label: "Web scraping", desc: "Disabled in v1", disabled: true },
-              { k: "enable_ocr", label: "OCR extraction", desc: "Roadmap" },
+              { k: "allow_internet", label: "Internet access", desc: "Live web search fallback when KB confidence is low" },
+              { k: "allow_web_scraping", label: "Web scraping", desc: "Allow indexing pages by URL in Knowledge tab" },
+              { k: "enable_ocr", label: "OCR (images)", desc: "Vision model extracts text from uploaded images" },
               { k: "image_extraction", label: "Image extraction", desc: "Roadmap" },
             ].map((t) => (
               <div key={t.k} className="flex items-center justify-between glass rounded-lg p-3">
