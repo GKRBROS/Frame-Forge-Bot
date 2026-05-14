@@ -142,6 +142,7 @@ export type Database = {
           id: string
           mime_type: string | null
           source_type: string
+          source_url: string | null
           status: Database["public"]["Enums"]["doc_status"]
           title: string
           updated_at: string
@@ -158,6 +159,7 @@ export type Database = {
           id?: string
           mime_type?: string | null
           source_type?: string
+          source_url?: string | null
           status?: Database["public"]["Enums"]["doc_status"]
           title: string
           updated_at?: string
@@ -174,6 +176,7 @@ export type Database = {
           id?: string
           mime_type?: string | null
           source_type?: string
+          source_url?: string | null
           status?: Database["public"]["Enums"]["doc_status"]
           title?: string
           updated_at?: string
