@@ -3,26 +3,24 @@
    It imports the `@tanstack/react-start/server-entry` module used by the project
    and forwards incoming requests as Fetch `Request` objects to its `fetch` handler.
 */
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 async function getServerEntry() {
   const m = await import('@tanstack/react-start/server-entry');
   return (m as any).default ?? m;
 }
 
-function headersFromRequest(req: VercelRequest) {
+function headersFromRequest(req: any) {
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers || {})) {
     if (Array.isArray(v)) {
-      for (const vv of v) headers.append(k, vv);
+      for (const vv of v as any) headers.append(k as string, String(vv));
     } else if (v !== undefined) {
-      headers.set(k, String(v));
+      headers.set(k as string, String(v));
     }
   }
   return headers;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   try {
     const entry = await getServerEntry();
     const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
