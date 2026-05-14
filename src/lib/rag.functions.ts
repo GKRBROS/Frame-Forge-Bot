@@ -375,9 +375,9 @@ export const askQuestion = createServerFn({ method: "POST" })
     const fallback = settings?.fallback_model ?? null;
     const strict = settings?.strict_knowledge ?? true;
     const rejectOutOfScope = settings?.out_of_scope_rejection ?? true;
+    const allowInternet = settings?.allow_internet ?? false;
 
-    // Hybrid retrieval via SECURITY DEFINER RPC (uses admin client to bypass middleware token scope safely;
-    // RPC itself enforces user_id filtering)
+    // Hybrid retrieval via SECURITY DEFINER RPC
     const { data: hits, error: searchErr } = await supabaseAdmin.rpc("search_chunks", {
       _user_id: userId,
       _query: data.question,
@@ -395,9 +395,19 @@ export const askQuestion = createServerFn({ method: "POST" })
 
     const topScore = results[0]?.score ?? 0;
     const confidence = Math.min(1, topScore / 1.0);
+    const lowConfidence = results.length === 0 || confidence < threshold;
 
-    // Strict mode: if no hits or confidence below threshold, reject
-    if (strict && rejectOutOfScope && (results.length === 0 || confidence < threshold)) {
+    // Optional: pull live web context when KB is weak and internet access is enabled
+    let webCitations: Array<{ n: number; document_id: string; document_title: string; excerpt: string; score: number }> = [];
+    let webContextItems: string[] = [];
+    if (allowInternet && lowConfidence) {
+      const w = await fetchWebContext(data.question, 4);
+      webCitations = w.citations;
+      webContextItems = w.contextItems;
+    }
+
+    // Strict mode and no web fallback: reject
+    if (strict && rejectOutOfScope && lowConfidence && webContextItems.length === 0) {
       const reply = "Sorry, this is outside my knowledge scope.";
       const { data: assistantMsg } = await supabase.from("messages").insert({
         conversation_id: data.conversationId,
@@ -422,12 +432,14 @@ export const askQuestion = createServerFn({ method: "POST" })
       return { message: assistantMsg, citations: [] };
     }
 
-    const contextBlock = results
+    const kbBlock = results
       .map((r, i) => `[${i + 1}] (source: ${r.document_title})\n${r.content}`)
       .join("\n\n---\n\n");
+    const contextBlock = [kbBlock, ...webContextItems].filter(Boolean).join("\n\n---\n\n");
+    const useWeb = webContextItems.length > 0;
 
     const messages: ChatMessage[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
       {
         role: "user",
         content: `CONTEXT EXCERPTS:\n\n${contextBlock || "(no excerpts available)"}\n\nQUESTION: ${data.question}`,
