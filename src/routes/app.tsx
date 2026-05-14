@@ -521,7 +521,7 @@ function AdminTab() {
                   <div className="text-sm font-medium">{t.label}</div>
                   <div className="text-xs text-muted-foreground">{t.desc}</div>
                 </div>
-                <button disabled={t.disabled} onClick={() => toggle(t.k)}
+                <button onClick={() => toggle(t.k)}
                   className={`w-10 h-6 rounded-full transition ${s[t.k as keyof typeof s] ? "bg-primary" : "bg-secondary"} disabled:opacity-40`}>
                   <span className={`block w-5 h-5 bg-white rounded-full transition ${s[t.k as keyof typeof s] ? "translate-x-4" : "translate-x-0.5"}`} />
                 </button>
