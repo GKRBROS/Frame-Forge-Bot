@@ -806,7 +806,13 @@ async function getAdminUserId(): Promise<string | null> {
 
 export const askPublic = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
-    z.object({ question: z.string().trim().min(1).max(2000), level: z.enum(["beginner","intermediate","advanced"]).optional() }).parse(d),
+    z.object({
+      question: z.string().trim().min(1).max(2000),
+      level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
+      fileData: z.string().optional(), // base64
+      fileName: z.string().optional(),
+      fileType: z.string().optional(),
+    }).parse(d),
   )
   .handler(async ({ data }) => {
     const start = Date.now();
@@ -819,7 +825,20 @@ export const askPublic = createServerFn({ method: "POST" })
     const allowInternet = settings?.allow_internet ?? false;
     const TOP_K = Math.max(15, Number(settings?.top_k ?? 15)); // ← INCREASED to 15
 
-    if (!adminId) {
+    // Handle uploaded file if present
+    let fileContext = "";
+    if (data.fileData) {
+      try {
+        const bin = Buffer.from(data.fileData, "base64");
+        const blob = new Blob([bin], { type: data.fileType });
+        fileContext = await extractTextFromBlob(blob, data.fileType ?? "application/octet-stream", data.fileName);
+        console.debug("[askPublic] extracted text from file:", { name: data.fileName, len: fileContext.length });
+      } catch (err) {
+        console.error("[askPublic] file extraction failed:", err);
+      }
+    }
+
+    if (!adminId && !fileContext) {
       return {
         content: "The knowledge base is not yet set up. Please ask the administrator to upload documents.",
         citations: [], confidence: 0, rejected: true, latencyMs: Date.now() - start, model,
@@ -1017,9 +1036,9 @@ export const askPublic = createServerFn({ method: "POST" })
       webContextItems = w.contextItems;
     }
 
-    // ONLY reject if: strict AND absolutely no KB results AND no web context
-    if (strict && results.length === 0 && webContextItems.length === 0) {
-      console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web' });
+    // ONLY reject if: strict AND absolutely no KB results AND no web context AND no file context
+    if (strict && results.length === 0 && webContextItems.length === 0 && !fileContext) {
+      console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web-no-file' });
       return {
         content: "Sorry, this is outside my knowledge scope.",
         citations: [], confidence: 0, rejected: true, latencyMs: Date.now() - start, model,
@@ -1031,7 +1050,11 @@ export const askPublic = createServerFn({ method: "POST" })
       .map((r, i) => `[${i + 1}] (${r.source ?? 'unknown'}, confidence: ${(r.score ?? 0).toFixed(2)})\n${r.content}`)
       .join("\n\n---\n\n");
     
-    const contextBlock = [kbBlock, ...webContextItems].filter(Boolean).join("\n\n---\n\n") || "(no matched excerpts - attempting general knowledge)";
+    const contextBlock = [
+      fileContext ? `[FILE] Content from uploaded file "${data.fileName}":\n${fileContext}` : null,
+      kbBlock, 
+      ...webContextItems
+    ].filter(Boolean).join("\n\n---\n\n") || "(no matched excerpts - attempting general knowledge)";
     const useWeb = webContextItems.length > 0;
 
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use ${data.level === 'beginner' ? 'very simple' : data.level === 'intermediate' ? 'clear, concise' : 'detailed and technical'} language and explain all terms.` : '';
@@ -1070,6 +1093,16 @@ export const askPublic = createServerFn({ method: "POST" })
     }));
     const webCitationsOffset = (webCitations ?? []).map((c) => ({ ...c, n: kbCitations.length + c.n }));
     const citations = [...kbCitations, ...webCitationsOffset];
+
+    if (fileContext) {
+      citations.unshift({
+        n: 0,
+        document_id: "upload",
+        document_title: data.fileName || "Uploaded File",
+        excerpt: fileContext.slice(0, 280),
+        score: 1,
+      });
+    }
 
     return {
       content: aiResult.content, citations, confidence,
