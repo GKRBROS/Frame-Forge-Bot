@@ -1,19 +1,11 @@
-// @ts-nocheck
 /* Vercel serverless SSR adapter.
    This file adapts the app's server entry to Vercel's Node serverless handler.
+   It imports the `@tanstack/react-start/server-entry` module used by the project
+   and forwards incoming requests as Fetch `Request` objects to its `fetch` handler.
 */
 async function getServerEntry() {
-  const distPath = '../dist/server/server.js';
-  const srcPath = '../src/server';
-  
-  try {
-    const m = await import(distPath);
-    return m.default ?? m;
-  } catch (e) {
-    console.warn('Could not import from dist, falling back to src/server', e);
-    const m = await import(srcPath);
-    return m.default ?? m;
-  }
+  const m = await import('@tanstack/react-start/server-entry');
+  return (m as any).default ?? m;
 }
 
 function headersFromRequest(req: any) {
@@ -30,48 +22,57 @@ function headersFromRequest(req: any) {
 
 export default async function handler(req: any, res: any) {
   try {
+    console.log('api/ssr invoked', { url: req.url, method: req.method });
     const entry = await getServerEntry();
-    const proto = Array.isArray(req.headers['x-forwarded-proto']) 
-      ? req.headers['x-forwarded-proto'][0] 
-      : req.headers['x-forwarded-proto'] || 'https';
+    const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
     const host = req.headers.host || process.env.VERCEL_URL || 'localhost';
-    const url = new URL(req.url || '/', `${proto}://${host}`).toString();
+    const url = `${proto}://${host}${req.url}`;
 
     const init: RequestInit = {
       method: req.method,
       headers: headersFromRequest(req),
-      body: req.method !== 'GET' && req.method !== 'HEAD' ? req : undefined,
+      // body must be undefined for GET/HEAD per Fetch spec
+      body: undefined,
     };
+
+    // If there is a request body (POST/PUT/PATCH), read it into a Buffer
+    if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
+      try {
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of req) {
+          chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk));
+        }
+        if (chunks.length > 0) {
+          const buf = Buffer.concat(chunks);
+          init.body = buf;
+        }
+      } catch (e) {
+        console.warn('Failed to read request body for SSR proxy, proceeding without body', e);
+      }
+    }
 
     const request = new Request(url, init);
     let response;
-
-    // TanStack Start's createStartHandler returns a function that can be called with a Request.
-    // If it's an object with a fetch method (older versions or custom wrappers), use that.
-    if (typeof entry === 'function') {
-      response = await entry(request);
-    } else if (entry && typeof entry.fetch === 'function') {
-      response = await entry.fetch(request);
-    } else {
-      console.error('Invalid server entry type:', typeof entry);
-      throw new Error('Server entry is neither a function nor an object with a fetch method.');
+    try {
+      response = await entry.fetch(request, {}, undefined);
+    } catch (err) {
+      console.error('entry.fetch failed', err);
+      // Return a safe static fallback HTML so the site doesn't 500 for all routes.
+      const fallback = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Service Unavailable</title></head><body style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b1220;color:#fff"><div style="text-align:center"><h1>Service temporarily unavailable</h1><p>We're experiencing a server issue. Please try again later.</p></div></body></html>`;
+      res.status(502).setHeader('content-type', 'text/html; charset=utf-8');
+      res.send(fallback);
+      return;
     }
 
+    // Copy status and headers
     res.status(response.status);
-    response.headers.forEach((value: string, key: string) => {
-      if (key.toLowerCase() !== 'content-encoding') {
-        res.setHeader(key, value);
-      }
-    });
+    response.headers.forEach((value: string, key: string) => res.setHeader(key, value));
 
+    // Pipe body
     const buf = await response.arrayBuffer();
     res.send(Buffer.from(buf));
   } catch (err: any) {
-    console.error('SSR handler error:', err);
-    res.status(500).json({ 
-      error: 'Internal Server Error', 
-      message: err.message,
-      stack: err.stack
-    });
+    console.error('SSR handler error', err);
+    res.status(500).send('Internal Server Error');
   }
 }
