@@ -22,6 +22,7 @@ function headersFromRequest(req: any) {
 
 export default async function handler(req: any, res: any) {
   try {
+    console.log('api/ssr invoked', { url: req.url, method: req.method });
     const entry = await getServerEntry();
     const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
     const host = req.headers.host || process.env.VERCEL_URL || 'localhost';
