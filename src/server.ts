@@ -10,8 +10,8 @@ const handler = createStartHandler({
   renderHandler: defaultRenderHandler,
 });
 
-function brandedErrorResponse(): Response {
-  return new Response(renderErrorPage(), {
+function brandedErrorResponse(error?: any): Response {
+  return new Response(renderErrorPage(error), {
     status: 500,
     headers: { "content-type": "text/html; charset=utf-8" },
   });
@@ -54,8 +54,9 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
     return response;
   }
 
-  console.error(consumeLastCapturedError() ?? new Error(`h3 swallowed SSR error: ${body}`));
-  return brandedErrorResponse();
+  const error = consumeLastCapturedError() ?? new Error(`h3 swallowed SSR error: ${body}`);
+  console.error(error);
+  return brandedErrorResponse(error);
 }
 
 export default {
@@ -66,7 +67,7 @@ export default {
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
-      return brandedErrorResponse();
+      return brandedErrorResponse(error);
     }
   },
 };
