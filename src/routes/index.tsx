@@ -98,10 +98,28 @@ function ChatHome() {
 
   // Open the latest conversation automatically so the user lands on recent work.
   useEffect(() => {
-    const latestConversation = convs.data?.[0]?.id;
-    if (!activeConv && latestConversation) {
-      setActiveConv(latestConversation);
-    }
+    // If user has existing conversations, open the most recent.
+    // If none exist, create a single persistent conversation for this user.
+    (async () => {
+      if (!user) return;
+      const latest = convs.data?.[0];
+      if (!activeConv && latest?.id) {
+        setActiveConv(latest.id);
+        return;
+      }
+      if (!activeConv && (!convs.data || convs.data.length === 0)) {
+        try {
+          const c = await createConv({ data: { title: 'Chat' } });
+          if (c?.id) {
+            setActiveConv(c.id);
+            setMessages([]);
+            convs.refetch?.();
+          }
+        } catch (err) {
+          console.error('failed to create persistent conversation', err);
+        }
+      }
+    })();
   }, [convs.data, activeConv]);
 
   return (
@@ -133,57 +151,12 @@ function ChatHome() {
         <aside className="w-72 border-r border-border p-3 hidden md:flex md:flex-col md:shrink-0 h-full">
           <div className="shrink-0 mb-3">
             <div className="text-xs text-muted-foreground mb-2">Conversations</div>
-            <button
-              onClick={async () => {
-                try {
-                  const c = await createConv({ data: { title: 'New chat' } });
-                  if (c?.id) {
-                    setActiveConv(c.id);
-                    setMessages([]);
-                    // refetch conversations
-                    convs.refetch?.();
-                  }
-                } catch (e) {
-                  console.error('Failed to create conversation', e);
-                }
-              }}
-              className="w-full px-3 py-2 rounded-lg bg-hero-gradient text-primary-foreground text-sm font-medium glow-hover mb-2"
-            >+ New chat</button>
           </div>
           <div className="space-y-2 flex-1">
             {(convs.data ?? []).map((c: any) => (
-              <div key={c.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${activeConv === c.id ? 'bg-primary/10 border border-primary/30' : 'hover:bg-secondary/50'}`}>
-                <div className="flex-1 flex items-center gap-2" onClick={() => setActiveConv(c.id)}>
-                  <BookOpen className="w-4 h-4 text-muted-foreground" />
-                  <span className="truncate">{c.title}</span>
-                </div>
-                <button
-                  title="Delete conversation"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (!confirm('Delete this conversation? This cannot be undone.')) return;
-                    try {
-                      await deleteConv({ data: { id: c.id } });
-                      convs.refetch?.();
-                      // if we deleted the active conversation, open a new one
-                      if (activeConv === c.id) {
-                        const nw = await createConv({ data: { title: 'New chat' } });
-                        if (nw?.id) {
-                          setActiveConv(nw.id);
-                          setMessages([]);
-                        } else {
-                          setActiveConv(null);
-                          setMessages([]);
-                        }
-                      }
-                    } catch (err) {
-                      console.error('delete failed', err);
-                    }
-                  }}
-                  className="ml-2 text-danger hover:opacity-80 p-1 rounded"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-trash"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 0V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+              <div key={c.id} onClick={() => setActiveConv(c.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${activeConv === c.id ? 'bg-primary/10 border border-primary/30' : 'hover:bg-secondary/50'}`}>
+                <BookOpen className="w-4 h-4 text-muted-foreground" />
+                <span className="truncate flex-1">{c.title}</span>
               </div>
             ))}
             {convs.data?.length === 0 && <div className="text-xs text-muted-foreground">No conversations yet.</div>}
@@ -292,6 +265,27 @@ function ChatHome() {
               </motion.button>
             </div>
           </motion.form>
+          <div className="flex items-center justify-center gap-4 mt-3">
+            <button
+              type="button"
+              onClick={async () => {
+                if (!activeConv) return;
+                if (!confirm('Clear this chat? This will delete the conversation and start a new one.')) return;
+                try {
+                  await deleteConv({ data: { id: activeConv } });
+                  const nw = await createConv({ data: { title: 'Chat' } });
+                  if (nw?.id) {
+                    setActiveConv(nw.id);
+                    setMessages([]);
+                    convs.refetch?.();
+                  }
+                } catch (err) {
+                  console.error('clear failed', err);
+                }
+              }}
+              className="text-xs text-muted-foreground hover:text-destructive"
+            >Clear chat</button>
+          </div>
           <div className="flex items-center justify-center gap-4 mt-3">
             <label className="text-xs text-muted-foreground">Show citations</label>
             <input type="checkbox" checked={showCitations} onChange={(e) => setShowCitations(e.target.checked)} />
