@@ -4,7 +4,7 @@
    and forwards incoming requests as Fetch `Request` objects to its `fetch` handler.
 */
 async function getServerEntry() {
-  const m = await import('@tanstack/react-start/server-entry');
+  const m = await import('../src/server');
   return (m as any).default ?? m;
 }
 

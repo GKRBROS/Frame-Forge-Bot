@@ -99,13 +99,13 @@ function ChatHome() {
   // Keep exactly one persistent conversation per user.
   useEffect(() => {
     (async () => {
-      if (!user) return;
+      if (!user || convs.isLoading) return;
       const latest = convs.data?.[0];
       if (!activeConv && latest?.id) {
         setActiveConv(latest.id);
         return;
       }
-      if (!activeConv && (!convs.data || convs.data.length === 0)) {
+      if (!activeConv && convs.isSuccess && (!convs.data || convs.data.length === 0)) {
         try {
           const c = await createConv({ data: { title: 'Chat' } });
           if (c?.id) {
@@ -118,7 +118,7 @@ function ChatHome() {
         }
       }
     })();
-  }, [convs.data, activeConv]);
+  }, [convs.data, convs.isLoading, convs.isSuccess, activeConv, user]);
 
   return (
     <div className="min-h-screen flex flex-col">

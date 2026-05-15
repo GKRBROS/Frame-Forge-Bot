@@ -26,7 +26,7 @@ type Tab = "chat" | "knowledge" | "analytics" | "admin" | "settings";
 function AppShell() {
   const { user, loading, signOut } = useAuth();
   const nav = useNavigate();
-  const [tab, setTab] = useState<Tab>("knowledge");
+  const [tab, setTab] = useState<Tab>("chat");
   const ensureAdmin = useServerFn(ensureAdminBootstrap);
   const roleFn = useServerFn(getMyRole);
 
@@ -52,6 +52,7 @@ function AppShell() {
   const isAdmin = role.data?.isAdmin ?? false;
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; admin?: boolean }[] = [
+    { id: "chat", label: "Chat", icon: MessageSquare },
     { id: "knowledge", label: "Knowledge", icon: Database },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "admin", label: "Admin", icon: Shield, admin: true },
@@ -80,6 +81,7 @@ function AppShell() {
         </div>
       </aside>
       <main className="flex-1 overflow-hidden">
+        {tab === "chat" && <ChatTab />}
         {tab === "knowledge" && <KnowledgeTab />}
         {tab === "analytics" && <AnalyticsTab />}
         {tab === "admin" && isAdmin && <AdminTab />}
