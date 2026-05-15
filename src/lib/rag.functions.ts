@@ -1167,8 +1167,25 @@ export const extractPublicAttachment = createServerFn({ method: "POST" })
     const raw = commaIdx >= 0 ? data.base64.slice(commaIdx + 1) : data.base64;
     const buf = Buffer.from(raw, "base64");
     const blob = new Blob([buf], { type: data.mimeType });
-    const content = await extractTextFromBlob(blob, data.mimeType, data.name);
-    return { name: data.name, mimeType: data.mimeType, content };
+    let content = "";
+    let error: string | undefined = undefined;
+    try {
+      content = await extractTextFromBlob(blob, data.mimeType, data.name);
+    } catch (err: any) {
+      error = err instanceof Error ? err.message : String(err ?? "unknown error");
+      console.error('[extractPublicAttachment] extraction failed for', data.name, error);
+      // Try a very small fallback: attempt raw text read before giving up
+      try {
+        const rawText = await blob.text();
+        if (rawText && rawText.trim().length > 0) {
+          content = rawText.slice(0, 12000);
+          error = (error ? error + ' | ' : '') + 'used raw text fallback';
+        }
+      } catch (e) {
+        // ignore fallback failures
+      }
+    }
+    return { name: data.name, mimeType: data.mimeType, content, error };
   });
 
 // ============ ADMIN ACCOUNT BOOTSTRAP (hardcoded credentials) ============

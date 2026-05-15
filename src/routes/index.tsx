@@ -114,7 +114,17 @@ function ChatHome() {
           return r;
         }),
       );
-      const r = await ask({ data: { question, level, attachmentContext: extracted.map((a) => ({ name: a.name, content: a.content })) } });
+        const extractedWithContent = (extracted ?? []).filter((e) => (e?.content ?? "").trim().length > 0);
+        // Surface any extraction errors to the user
+        for (const e of (extracted ?? [])) {
+          if ((!e?.content || e.content.trim().length === 0) && e?.error) {
+            setMessages((m) => [
+              ...m,
+              { role: "assistant", content: `⚠️ Attachment "${e.name}" extraction failed: ${e.error}`, rejected: true },
+            ]);
+          }
+        }
+        const r = await ask({ data: { question, level, attachmentContext: extractedWithContent.map((a) => ({ name: a.name, content: a.content })) } });
       setMessages((m) => [
         ...m,
         {
