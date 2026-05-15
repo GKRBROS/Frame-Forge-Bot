@@ -399,25 +399,28 @@ const SYSTEM_PROMPT = `You are a restricted educational AI assistant.
 
 ABSOLUTE RULES:
 1. Answer using ONLY the provided CONTEXT excerpts from the uploaded knowledge base.
+2. When uploaded attachments are present, treat them as valid context and answer from them directly.
 2. Do NOT invent facts or use outside knowledge beyond the provided excerpts.
 3. If the context does not directly support the answer, refuse instead of guessing.
 4. If the question cannot be answered from the context, reply exactly: "Sorry, this is outside my knowledge scope."
 5. Cite sources inline using [n] where n is the excerpt number. Do not fabricate citations.
 6. Keep answers factual, clear, and educational. Use markdown for structure only when supported by the context.
 7. Adapt explanations to the requested learning level: beginner, intermediate, advanced.
-8. Never use memory, general knowledge, or assumptions to fill missing details.`;
+8. Never use memory, general knowledge, or assumptions to fill missing details.
+9. If an attachment contains the answer, quote or summarize that attachment instead of refusing.`;
 
 const SYSTEM_PROMPT_WITH_WEB = `You are a restricted educational AI assistant.
 
 RULES:
 1. Answer using the provided CONTEXT excerpts from the uploaded knowledge base, uploaded attachments, and optionally labelled web results.
 2. Prefer knowledge-base excerpts over attachment excerpts, and prefer those over web results when all are present.
-3. If the context does not directly support the answer, refuse instead of guessing.
-4. If neither the knowledge base, attachments, nor web results contain the answer, reply: "Sorry, I couldn't find an answer."
-5. Structure answers with: Definition, Explanation, Example, Key Points, Optional Notes only when supported by the context.
-6. Adapt explanations to the requested learning level: beginner, intermediate, advanced.
-7. Cite sources inline using [n] for KB excerpts and [Wn] for web results. Attachment excerpts do not need citations unless the answer quotes them verbatim.
-8. Never use memory, general knowledge, or assumptions to fill missing details.`;
+3. Uploaded attachments are valid evidence. If they contain the answer, use them directly.
+4. If the context does not directly support the answer, refuse instead of guessing.
+5. If neither the knowledge base, attachments, nor web results contain the answer, reply: "Sorry, I couldn't find an answer."
+6. Structure answers with: Definition, Explanation, Example, Key Points, Optional Notes only when supported by the context.
+7. Adapt explanations to the requested learning level: beginner, intermediate, advanced.
+8. Cite sources inline using [n] for KB excerpts and [Wn] for web results. Attachment excerpts do not need citations unless the answer quotes them verbatim.
+9. Never use memory, general knowledge, or assumptions to fill missing details.`;
 
 async function fetchWebContext(query: string, limit = 4): Promise<{ contextItems: string[]; citations: Array<{ n: number; document_id: string; document_title: string; excerpt: string; score: number }> }> {
   try {
@@ -1029,7 +1032,7 @@ export const askPublic = createServerFn({ method: "POST" })
       webContextItems = w.contextItems;
     }
 
-    // Strict mode: reject when KB support is weak and there is no web fallback
+    // Strict mode: reject when KB support is weak, there is no attachment context, and there is no web fallback.
     if (strict && !hasAttachmentContext && (results.length === 0 || lowConfidence) && webContextItems.length === 0) {
       console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web' });
       return {
@@ -1047,10 +1050,14 @@ export const askPublic = createServerFn({ method: "POST" })
     const useWeb = webContextItems.length > 0;
 
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use ${data.level === 'beginner' ? 'very simple' : data.level === 'intermediate' ? 'clear, concise' : 'detailed and technical'} language and explain all terms.` : '';
+    const attachmentInstr = hasAttachmentContext
+      ? 'Uploaded attachments are authoritative context. If the answer appears in an attachment, answer from it directly and do not refuse just because KB retrieval is weak.'
+      : '';
     const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.`;
     
     const messages: ChatMessage[] = [
       { role: "system", content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
+      ...(attachmentInstr ? [{ role: "system", content: attachmentInstr }] : []),
       ...(levelInstr ? [{ role: "system", content: levelInstr }] : []),
       { role: "system", content: formatInstr },
       { role: "user", content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
@@ -1075,7 +1082,7 @@ export const askPublic = createServerFn({ method: "POST" })
       };
     }
 
-    const wasRejected = /outside my knowledge scope/i.test(aiResult.content) && results.length === 0;
+    const wasRejected = !hasAttachmentContext && /outside my knowledge scope/i.test(aiResult.content) && results.length === 0;
     const kbCitations = results.map((r, i) => ({
       n: i + 1, document_id: r.document_id, document_title: r.document_title,
       excerpt: r.content.slice(0, 280), score: r.score,

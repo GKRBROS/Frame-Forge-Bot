@@ -28,6 +28,13 @@ type Msg = {
   citations?: Citation[];
   confidence?: number;
   rejected?: boolean;
+  attachments?: {
+    id: string;
+    name: string;
+    mimeType: string;
+    size: number;
+    preview?: string;
+  }[];
 };
 
 type PendingAttachment = {
@@ -82,12 +89,26 @@ function ChatHome() {
   async function send(q: string) {
     const question = q.trim();
     if (!question || loading) return;
+    const pendingAttachments = attachments;
     setInput("");
-    setMessages((m) => [...m, { role: "user", content: question }]);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "user",
+        content: question,
+        attachments: pendingAttachments.map((a) => ({
+          id: a.id,
+          name: a.name,
+          mimeType: a.mimeType,
+          size: a.size,
+          preview: a.preview,
+        })),
+      },
+    ]);
     setLoading(true);
     try {
       const extracted = await Promise.all(
-        attachments.map(async (a) => {
+        pendingAttachments.map(async (a) => {
           const base64 = await readFileAsDataUrl(a.file);
           const r = await extractPublicAttachment({ data: { name: a.name, mimeType: a.mimeType || a.file.type || "application/octet-stream", base64 } });
           return r;
@@ -359,7 +380,23 @@ function MessageBubble({ msg, showCitations }: { msg: Msg; showCitations?: boole
           }
         >
           {isUser ? (
-            <div className="whitespace-pre-wrap leading-relaxed text-[15px]">{msg.content}</div>
+            <div className="space-y-3">
+              <div className="whitespace-pre-wrap leading-relaxed text-[15px]">{msg.content}</div>
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {msg.attachments.map((attachment) => (
+                    <div key={attachment.id} className="flex items-center gap-2 rounded-full bg-black/10 px-3 py-2 text-xs backdrop-blur-sm">
+                      {attachment.preview ? (
+                        <img src={attachment.preview} alt={attachment.name} className="h-7 w-7 rounded object-cover" />
+                      ) : (
+                        <FileText className="w-3.5 h-3.5" />
+                      )}
+                      <span className="max-w-44 truncate">{attachment.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
             <div className="leading-relaxed text-[15px] space-y-3">
               <ReactMarkdown
