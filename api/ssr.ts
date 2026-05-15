@@ -1,11 +1,8 @@
 // @ts-nocheck
 /* Vercel serverless SSR adapter.
    This file adapts the app's server entry to Vercel's Node serverless handler.
-   It imports the `@tanstack/react-start/server-entry` module used by the project
-   and forwards incoming requests as Fetch `Request` objects to its `fetch` handler.
 */
 async function getServerEntry() {
-  // Use dynamic paths to prevent static analysis from failing the build if files are missing
   const distPath = '../dist/server/server.js';
   const srcPath = '../src/server';
   
@@ -40,36 +37,41 @@ export default async function handler(req: any, res: any) {
     const host = req.headers.host || process.env.VERCEL_URL || 'localhost';
     const url = new URL(req.url || '/', `${proto}://${host}`).toString();
 
-    console.log('api/ssr request', { url, method: req.method });
-
     const init: RequestInit = {
       method: req.method,
       headers: headersFromRequest(req),
       body: req.method !== 'GET' && req.method !== 'HEAD' ? req : undefined,
-    } as any;
+    };
 
     const request = new Request(url, init);
-    const response = await entry.fetch(request, {}, undefined);
+    let response;
 
-    // Copy status and headers
+    // TanStack Start's createStartHandler returns a function that can be called with a Request.
+    // If it's an object with a fetch method (older versions or custom wrappers), use that.
+    if (typeof entry === 'function') {
+      response = await entry(request);
+    } else if (entry && typeof entry.fetch === 'function') {
+      response = await entry.fetch(request);
+    } else {
+      console.error('Invalid server entry type:', typeof entry);
+      throw new Error('Server entry is neither a function nor an object with a fetch method.');
+    }
+
     res.status(response.status);
     response.headers.forEach((value: string, key: string) => {
-      // Avoid setting content-encoding if we are letting Vercel handle compression
       if (key.toLowerCase() !== 'content-encoding') {
         res.setHeader(key, value);
       }
     });
 
-    // Pipe body
     const buf = await response.arrayBuffer();
     res.send(Buffer.from(buf));
   } catch (err: any) {
     console.error('SSR handler error:', err);
-    // Return more info in the response to help debug Internal Server Errors
     res.status(500).json({ 
       error: 'Internal Server Error', 
       message: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined 
+      stack: err.stack
     });
   }
 }
