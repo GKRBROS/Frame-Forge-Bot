@@ -7,13 +7,23 @@ async function getServerEntry() {
   // Prefer the locally built server entry (dist/server/index.js) when available
   try {
     const path = require('path');
+    const fs = require('fs');
     const { pathToFileURL } = require('url');
-    const local = path.join(process.cwd(), 'dist', 'server', 'index.js');
-    try {
-      const m = await import(pathToFileURL(local).href);
-      return (m as any).default ?? m;
-    } catch (e) {
-      // fallback to package-provided entry
+    const candidates = [
+      path.join(process.cwd(), 'dist', 'server', 'server.js'),
+      path.join(process.cwd(), 'dist', 'server', 'index.js'),
+      path.join(process.cwd(), 'dist', 'server', 'index.cjs'),
+    ];
+    for (const local of candidates) {
+      try {
+        if (fs.existsSync(local)) {
+          console.log('Using local server entry:', local);
+          const m = await import(pathToFileURL(local).href);
+          return (m as any).default ?? m;
+        }
+      } catch (e) {
+        console.warn('Failed to import local server entry', local, e);
+      }
     }
   } catch (err) {
     // ignore and fallback
