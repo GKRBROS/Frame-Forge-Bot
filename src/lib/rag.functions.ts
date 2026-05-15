@@ -400,22 +400,24 @@ const SYSTEM_PROMPT = `You are a restricted educational AI assistant.
 ABSOLUTE RULES:
 1. Answer using ONLY the provided CONTEXT excerpts from the uploaded knowledge base.
 2. Do NOT invent facts or use outside knowledge beyond the provided excerpts.
-3. If the provided CONTEXT is semantically related to the question, provide a helpful educational explanation.
-4. Only reply with: "Sorry, this is outside my knowledge scope." when there is absolutely no relevant educational context.
+3. If the context does not directly support the answer, refuse instead of guessing.
+4. If the question cannot be answered from the context, reply exactly: "Sorry, this is outside my knowledge scope."
 5. Cite sources inline using [n] where n is the excerpt number. Do not fabricate citations.
-6. Structure answers with the sections: Definition, Explanation, Example, Key Points, Optional Notes when applicable.
+6. Keep answers factual, clear, and educational. Use markdown for structure only when supported by the context.
 7. Adapt explanations to the requested learning level: beginner, intermediate, advanced.
-8. Keep answers factual, clear, and educational. Use markdown for structure.`;
+8. Never use memory, general knowledge, or assumptions to fill missing details.`;
 
 const SYSTEM_PROMPT_WITH_WEB = `You are a restricted educational AI assistant.
 
 RULES:
 1. Answer using the provided CONTEXT excerpts from the uploaded knowledge base and optionally labelled web results.
 2. Prefer knowledge-base excerpts over web results when both are present.
-3. If neither the knowledge base nor web results contain the answer, reply: "Sorry, I couldn't find an answer."
-4. Structure answers with: Definition, Explanation, Example, Key Points, Optional Notes.
-5. Adapt explanations to the requested learning level: beginner, intermediate, advanced.
-6. Cite sources inline using [n] for KB excerpts and [Wn] for web results. Do not fabricate citations.`;
+3. If the context does not directly support the answer, refuse instead of guessing.
+4. If neither the knowledge base nor web results contain the answer, reply: "Sorry, I couldn't find an answer."
+5. Structure answers with: Definition, Explanation, Example, Key Points, Optional Notes only when supported by the context.
+6. Adapt explanations to the requested learning level: beginner, intermediate, advanced.
+7. Cite sources inline using [n] for KB excerpts and [Wn] for web results. Do not fabricate citations.
+8. Never use memory, general knowledge, or assumptions to fill missing details.`;
 
 async function fetchWebContext(query: string, limit = 4): Promise<{ contextItems: string[]; citations: Array<{ n: number; document_id: string; document_title: string; excerpt: string; score: number }> }> {
   try {
@@ -622,12 +624,13 @@ export const askQuestion = createServerFn({ method: "POST" })
     }
 
     const results = await hybridRetrieve();
+    const isEducational = isEducationalQuery(data.question);
 
     // Confidence and low-confidence detection (do not auto-reject purely on threshold)
     const rawScores = results.map((r) => r.finalScore ?? r.score ?? 0);
     const topScore = rawScores.length ? Math.max(...rawScores) : 0;
     const confidence = Math.min(1, topScore);
-    const dynamicThreshold = Math.max(0.15, configuredThreshold); // keep configured but ensure a floor
+    const dynamicThreshold = isEducational ? Math.max(0.22, configuredThreshold) : Math.max(0.35, configuredThreshold);
     const lowConfidence = results.length === 0 || confidence < dynamicThreshold;
 
     // Optional: pull live web context when KB is weak and internet access is enabled
@@ -639,8 +642,8 @@ export const askQuestion = createServerFn({ method: "POST" })
       webContextItems = w.contextItems;
     }
 
-    // Strict mode and no KB fallback: reject only when absolutely no KB hits
-    if (strict && rejectOutOfScope && results.length === 0) {
+    // Strict mode: reject when the KB support is weak and there is no web fallback
+    if (strict && rejectOutOfScope && (results.length === 0 || lowConfidence) && webCitations.length === 0) {
       const reply = "Sorry, this is outside my knowledge scope.";
       const { data: assistantMsg } = await supabase.from("messages").insert({
         conversation_id: data.conversationId,
@@ -806,39 +809,20 @@ async function getAdminUserId(): Promise<string | null> {
 
 export const askPublic = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
-    z.object({
-      question: z.string().trim().min(1).max(2000),
-      level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
-      fileData: z.string().optional(), // base64
-      fileName: z.string().optional(),
-      fileType: z.string().optional(),
-    }).parse(d),
+    z.object({ question: z.string().trim().min(1).max(2000), level: z.enum(["beginner","intermediate","advanced"]).optional() }).parse(d),
   )
   .handler(async ({ data }) => {
     const start = Date.now();
     const adminId = await getAdminUserId();
     const { data: settings } = await supabaseAdmin.from("ai_settings").select("*").eq("id", 1).single();
-    const threshold = Number(settings?.confidence_threshold ?? 0.40); // ← LOWERED to 0.40 for educational
+    const threshold = Number(settings?.confidence_threshold ?? 0.40);
     const model = settings?.active_model ?? "deepseek/deepseek-chat-v3.1";
     const fallback = settings?.fallback_model ?? null;
     const strict = settings?.strict_knowledge ?? true;
     const allowInternet = settings?.allow_internet ?? false;
     const TOP_K = Math.max(15, Number(settings?.top_k ?? 15)); // ← INCREASED to 15
 
-    // Handle uploaded file if present
-    let fileContext = "";
-    if (data.fileData) {
-      try {
-        const bin = Buffer.from(data.fileData, "base64");
-        const blob = new Blob([bin], { type: data.fileType });
-        fileContext = await extractTextFromBlob(blob, data.fileType ?? "application/octet-stream", data.fileName);
-        console.debug("[askPublic] extracted text from file:", { name: data.fileName, len: fileContext.length });
-      } catch (err) {
-        console.error("[askPublic] file extraction failed:", err);
-      }
-    }
-
-    if (!adminId && !fileContext) {
+    if (!adminId) {
       return {
         content: "The knowledge base is not yet set up. Please ask the administrator to upload documents.",
         citations: [], confidence: 0, rejected: true, latencyMs: Date.now() - start, model,
@@ -1024,7 +1008,7 @@ export const askPublic = createServerFn({ method: "POST" })
     
     // Adaptive threshold - lower for educational queries
     const isEducational = isEducationalQuery(data.question);
-    const dynamicThreshold = isEducational ? 0.25 : Math.max(0.40, threshold);
+    const dynamicThreshold = isEducational ? Math.max(0.22, threshold) : Math.max(0.35, threshold);
     const lowConfidence = results.length === 0 || confidence < dynamicThreshold;
 
     // Optional: pull live web context when KB is weak
@@ -1036,9 +1020,9 @@ export const askPublic = createServerFn({ method: "POST" })
       webContextItems = w.contextItems;
     }
 
-    // ONLY reject if: strict AND absolutely no KB results AND no web context AND no file context
-    if (strict && results.length === 0 && webContextItems.length === 0 && !fileContext) {
-      console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web-no-file' });
+    // Strict mode: reject when KB support is weak and there is no web fallback
+    if (strict && (results.length === 0 || lowConfidence) && webContextItems.length === 0) {
+      console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web' });
       return {
         content: "Sorry, this is outside my knowledge scope.",
         citations: [], confidence: 0, rejected: true, latencyMs: Date.now() - start, model,
@@ -1050,11 +1034,7 @@ export const askPublic = createServerFn({ method: "POST" })
       .map((r, i) => `[${i + 1}] (${r.source ?? 'unknown'}, confidence: ${(r.score ?? 0).toFixed(2)})\n${r.content}`)
       .join("\n\n---\n\n");
     
-    const contextBlock = [
-      fileContext ? `[FILE] Content from uploaded file "${data.fileName}":\n${fileContext}` : null,
-      kbBlock, 
-      ...webContextItems
-    ].filter(Boolean).join("\n\n---\n\n") || "(no matched excerpts - attempting general knowledge)";
+    const contextBlock = [kbBlock, ...webContextItems].filter(Boolean).join("\n\n---\n\n") || "(no matched excerpts - attempting general knowledge)";
     const useWeb = webContextItems.length > 0;
 
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use ${data.level === 'beginner' ? 'very simple' : data.level === 'intermediate' ? 'clear, concise' : 'detailed and technical'} language and explain all terms.` : '';
@@ -1093,16 +1073,6 @@ export const askPublic = createServerFn({ method: "POST" })
     }));
     const webCitationsOffset = (webCitations ?? []).map((c) => ({ ...c, n: kbCitations.length + c.n }));
     const citations = [...kbCitations, ...webCitationsOffset];
-
-    if (fileContext) {
-      citations.unshift({
-        n: 0,
-        document_id: "upload",
-        document_title: data.fileName || "Uploaded File",
-        excerpt: fileContext.slice(0, 280),
-        score: 1,
-      });
-    }
 
     return {
       content: aiResult.content, citations, confidence,

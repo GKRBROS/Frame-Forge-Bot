@@ -3,16 +3,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  Sparkles, MessageSquare, Database, Settings, Shield, BarChart3,
-  Plus, Upload, Trash2, LogOut, Send, FileText, AlertCircle, CheckCircle2, Loader2,
-  BookOpen,
+  Sparkles, Database, Settings, Shield, BarChart3,
+  Upload, Trash2, LogOut, FileText, AlertCircle, CheckCircle2, Loader2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import {
   listDocuments, ingestText, ingestUploadedFile, ingestUrl, deleteDocument, toggleDocument,
-  getAiSettings, updateAiSettings, listConversations, getMessages, createConversation,
-  deleteConversation, askQuestion, getMyRole, ensureAdminBootstrap, getAnalytics,
+  getAiSettings, updateAiSettings, askQuestion, getMyRole, ensureAdminBootstrap, getAnalytics,
   listUsers, setUserAdmin,
 } from "@/lib/rag.functions";
 
@@ -26,7 +24,7 @@ type Tab = "chat" | "knowledge" | "analytics" | "admin" | "settings";
 function AppShell() {
   const { user, loading, signOut } = useAuth();
   const nav = useNavigate();
-  const [tab, setTab] = useState<Tab>("chat");
+  const [tab, setTab] = useState<Tab>("knowledge");
   const ensureAdmin = useServerFn(ensureAdminBootstrap);
   const roleFn = useServerFn(getMyRole);
 
@@ -52,7 +50,6 @@ function AppShell() {
   const isAdmin = role.data?.isAdmin ?? false;
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; admin?: boolean }[] = [
-    { id: "chat", label: "Chat", icon: MessageSquare },
     { id: "knowledge", label: "Knowledge", icon: Database },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "admin", label: "Admin", icon: Shield, admin: true },
@@ -81,155 +78,11 @@ function AppShell() {
         </div>
       </aside>
       <main className="flex-1 overflow-hidden">
-        {tab === "chat" && <ChatTab />}
         {tab === "knowledge" && <KnowledgeTab />}
         {tab === "analytics" && <AnalyticsTab />}
         {tab === "admin" && isAdmin && <AdminTab />}
         {tab === "settings" && <SettingsTab />}
       </main>
-    </div>
-  );
-}
-
-// ============ CHAT ============
-function ChatTab() {
-  const qc = useQueryClient();
-  const listConv = useServerFn(listConversations);
-  const getMsg = useServerFn(getMessages);
-  const newConv = useServerFn(createConversation);
-  const delConv = useServerFn(deleteConversation);
-  const ask = useServerFn(askQuestion);
-
-  const SUGGESTIONS = [
-    "What topics can you help with?",
-    "Summarize the latest document",
-    "Give me the key points",
-    "What does the policy say about…",
-  ];
-
-  const [showCitations, setShowCitations] = useState(false);
-
-  const convs = useQuery({ queryKey: ["convs"], queryFn: () => listConv() });
-  const [activeId, setActiveId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!activeId && convs.data?.[0]) setActiveId(convs.data[0].id);
-  }, [convs.data, activeId]);
-
-  const msgs = useQuery({
-    queryKey: ["msgs", activeId],
-    queryFn: () => getMsg({ data: { conversationId: activeId! } }),
-    enabled: !!activeId,
-  });
-
-  const [level, setLevel] = useState<'beginner'|'intermediate'|'advanced'>('beginner');
-
-  const askM = useMutation({
-    mutationFn: (payload: { q: string; level: 'beginner'|'intermediate'|'advanced' }) =>
-      ask({ data: { conversationId: activeId!, question: payload.q, level: payload.level } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["msgs", activeId] });
-      qc.invalidateQueries({ queryKey: ["convs"] });
-    },
-  });
-
-  async function newChat() {
-    const c = await newConv({ data: {} });
-    await convs.refetch();
-    setActiveId(c.id);
-  }
-
-  const [input, setInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { scrollRef.current?.scrollTo({ top: 999999, behavior: "smooth" }); }, [msgs.data, askM.isPending]);
-
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || askM.isPending) return;
-    let convId = activeId;
-    if (!convId) {
-      const c = await newConv({ data: { title: input.slice(0, 60) } });
-      convId = c.id;
-      setActiveId(convId);
-      await convs.refetch();
-    }
-    const q = input;
-    setInput("");
-    // optimistic
-    qc.setQueryData(["msgs", convId], (old: any) => [
-      ...(old ?? []),
-      { id: "tmp", role: "user", content: q, created_at: new Date().toISOString() },
-    ]);
-    askM.mutate({ q, level });
-  }
-
-  return (
-    <div className="h-screen flex">
-      <div className="w-72 border-r border-border p-3 flex flex-col gap-2 overflow-y-auto">
-        <button onClick={newChat} className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-hero-gradient text-primary-foreground text-sm font-medium glow-hover">
-          <Plus className="w-4 h-4" /> New chat
-        </button>
-        {(convs.data ?? []).map((c) => (
-          <div key={c.id} className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${activeId === c.id ? "bg-primary/10 border border-primary/30" : "hover:bg-secondary/50"}`}
-            onClick={() => setActiveId(c.id)}>
-            <MessageSquare className="w-4 h-4 text-muted-foreground shrink-0" />
-            <span className="truncate flex-1">{c.title}</span>
-            <button onClick={(e) => { e.stopPropagation(); delConv({ data: { id: c.id } }).then(() => { if (activeId === c.id) setActiveId(null); convs.refetch(); }); }}
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ))}
-        {convs.data?.length === 0 && <div className="text-xs text-muted-foreground px-3 py-4">No conversations yet.</div>}
-      </div>
-
-      <div className="flex-1 flex flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 scroll-fade">
-          <div className="max-w-3xl mx-auto space-y-6">
-            {(!msgs.data || msgs.data.length === 0) && !askM.isPending && (
-              <div className="text-center py-20">
-                <Sparkles className="w-10 h-10 text-primary mx-auto mb-4" />
-                <h2 className="text-2xl font-display font-bold mb-2">Ask your knowledge base</h2>
-                <p className="text-sm text-muted-foreground">Answers come strictly from documents you've uploaded.</p>
-                <div className="grid sm:grid-cols-2 gap-2 max-w-xl mx-auto mt-6">
-                  {SUGGESTIONS.map((s) => (
-                    <button key={s} onClick={() => setInput(s)} className="text-left text-sm glass-card rounded-xl px-4 py-3 hover:border-primary transition">
-                      <BookOpen className="w-4 h-4 text-primary inline mr-2" />
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {msgs.data?.map((m: any) => <MessageBubble key={m.id} m={m} showCitations={showCitations} />)}
-            {askM.isPending && (
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-lg bg-hero-gradient flex items-center justify-center shrink-0"><Sparkles className="w-4 h-4 text-primary-foreground" /></div>
-                <div className="glass-card rounded-2xl px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching knowledge…
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-        <form onSubmit={send} className="border-t border-border p-4">
-          <div className="max-w-3xl mx-auto flex gap-2">
-            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask anything from your knowledge base…"
-              className="flex-1 px-4 py-3 rounded-xl bg-input border border-border focus:border-primary outline-none" />
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setLevel('beginner')} className={`px-3 py-2 rounded-lg text-xs ${level==='beginner' ? 'bg-primary/15 text-primary' : 'glass'}`}>Beginner</button>
-              <button type="button" onClick={() => setLevel('intermediate')} className={`px-3 py-2 rounded-lg text-xs ${level==='intermediate' ? 'bg-primary/15 text-primary' : 'glass'}`}>Intermediate</button>
-              <button type="button" onClick={() => setLevel('advanced')} className={`px-3 py-2 rounded-lg text-xs ${level==='advanced' ? 'bg-primary/15 text-primary' : 'glass'}`}>Advanced</button>
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-xs text-muted-foreground">Show citations</label>
-              <input type="checkbox" checked={showCitations} onChange={(e) => setShowCitations(e.target.checked)} />
-            </div>
-            <button disabled={askM.isPending || !input.trim()} className="px-5 py-3 rounded-xl bg-hero-gradient text-primary-foreground font-medium glow-hover disabled:opacity-50">
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
