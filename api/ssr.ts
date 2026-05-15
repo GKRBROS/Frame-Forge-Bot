@@ -4,6 +4,21 @@
    and forwards incoming requests as Fetch `Request` objects to its `fetch` handler.
 */
 async function getServerEntry() {
+  // Prefer the locally built server entry (dist/server/index.js) when available
+  try {
+    const path = require('path');
+    const { pathToFileURL } = require('url');
+    const local = path.join(process.cwd(), 'dist', 'server', 'index.js');
+    try {
+      const m = await import(pathToFileURL(local).href);
+      return (m as any).default ?? m;
+    } catch (e) {
+      // fallback to package-provided entry
+    }
+  } catch (err) {
+    // ignore and fallback
+  }
+
   const m = await import('@tanstack/react-start/server-entry');
   return (m as any).default ?? m;
 }
