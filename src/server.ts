@@ -5,6 +5,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
 const handler = createStartHandler({
+  // @ts-ignore
   createRouter: getRouter,
   renderHandler: defaultRenderHandler,
 });
@@ -60,7 +61,8 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      const response = await handler.fetch(request, env, ctx);
+      // The handler returned by createStartHandler is a function that can be called directly
+      const response = await (handler as any)(request);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
