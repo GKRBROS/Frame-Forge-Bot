@@ -96,10 +96,8 @@ function ChatHome() {
     }
   }, [msgsQuery.data]);
 
-  // Open the latest conversation automatically so the user lands on recent work.
+  // Keep exactly one persistent conversation per user.
   useEffect(() => {
-    // If user has existing conversations, open the most recent.
-    // If none exist, create a single persistent conversation for this user.
     (async () => {
       if (!user) return;
       const latest = convs.data?.[0];
@@ -146,43 +144,11 @@ function ChatHome() {
         </div>
       </motion.nav>
 
-      {/* Layout: conversations sidebar + main chat area */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        <aside className="w-72 border-r border-border p-3 hidden md:flex md:flex-col md:shrink-0 h-full">
-          <div className="shrink-0 mb-3">
-            <div className="text-xs text-muted-foreground mb-2">Conversations</div>
-          </div>
-          <div className="space-y-2 flex-1">
-            {(convs.data ?? []).map((c: any) => (
-              <div key={c.id} onClick={() => setActiveConv(c.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${activeConv === c.id ? 'bg-primary/10 border border-primary/30' : 'hover:bg-secondary/50'}`}>
-                <BookOpen className="w-4 h-4 text-muted-foreground" />
-                <span className="truncate flex-1">{c.title}</span>
-              </div>
-            ))}
-            {convs.data?.length === 0 && <div className="text-xs text-muted-foreground">No conversations yet.</div>}
-          </div>
-        </aside>
-
-        <main className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
-          {user && (
-            <div className="md:hidden px-4 pt-3">
-              <div className="text-xs text-muted-foreground mb-2">Previous chats</div>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {(convs.data ?? []).map((c: any) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setActiveConv(c.id)}
-                    className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap ${activeConv === c.id ? 'bg-primary/15 text-primary border border-primary/30' : 'glass'}`}
-                  >
-                    {c.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto w-full px-4 md:px-6 py-6 md:py-8">
+      {/* Single-page chat workspace */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto w-full px-4 md:px-6 py-6 md:py-8">
           <div className="min-h-full flex flex-col justify-end">
-          <AnimatePresence mode="wait">
+            <AnimatePresence mode="wait">
             {empty ? (
               <motion.div
                 key="empty"
@@ -226,10 +192,9 @@ function ChatHome() {
                 {loading && <TypingIndicator />}
               </motion.div>
             )}
-          </AnimatePresence>
+            </AnimatePresence>
           </div>
-          </div>
-        </main>
+        </div>
       </div>
 
       {/* Composer */}
