@@ -39,7 +39,7 @@ export default async function handler(req: any, res: any) {
 
     // Copy status and headers
     res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
+    response.headers.forEach((value: string, key: string) => res.setHeader(key, value));
 
     // Pipe body
     const buf = await response.arrayBuffer();
