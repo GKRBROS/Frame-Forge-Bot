@@ -3,8 +3,8 @@
   "private": true,
   "sideEffects": false,
   "type": "module",
-  "engines": {
-    "node": ">=20.0.0"
+  "imports": {
+    "#tanstack-router-entry": "./dist/server/index.js"
   },
   "scripts": {
     "dev": "vite dev",
@@ -73,6 +73,7 @@
     "tw-animate-css": "^1.3.4",
     "unpdf": "^1.6.2",
     "vaul": "^1.1.2",
+    "vercel": "^54.0.0",
     "vite-tsconfig-paths": "^6.0.2",
     "zod": "^3.24.2"
   },
