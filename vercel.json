@@ -2,10 +2,6 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/api/ssr",
-      "destination": "/api/ssr.ts"
-    },
-    {
       "source": "/(.*)",
       "destination": "/api/ssr"
     }

@@ -4,8 +4,16 @@
    and forwards incoming requests as Fetch `Request` objects to its `fetch` handler.
 */
 async function getServerEntry() {
-  const m = await import('../src/server');
-  return (m as any).default ?? m;
+  // In Vercel production, we want to import the built server bundle.
+  // The build script generates this in dist/server/server.js.
+  try {
+    const m = await import('../dist/server/server.js');
+    return m.default ?? m;
+  } catch (e) {
+    console.warn('Could not import from dist, falling back to src/server', e);
+    const m = await import('../src/server');
+    return m.default ?? m;
+  }
 }
 
 function headersFromRequest(req: any) {
@@ -22,41 +30,43 @@ function headersFromRequest(req: any) {
 
 export default async function handler(req: any, res: any) {
   try {
-    console.log('api/ssr invoked', { url: req.url, method: req.method });
     const entry = await getServerEntry();
-    const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
+    const proto = Array.isArray(req.headers['x-forwarded-proto']) 
+      ? req.headers['x-forwarded-proto'][0] 
+      : req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host || process.env.VERCEL_URL || 'localhost';
-    const url = `${proto}://${host}${req.url}`;
+    const url = new URL(req.url || '/', `${proto}://${host}`).toString();
+
+    console.log('api/ssr request', { url, method: req.method });
 
     const init: RequestInit = {
       method: req.method,
       headers: headersFromRequest(req),
-      // body must be undefined for GET/HEAD per Fetch spec
-      body: req.method && req.method !== 'GET' && req.method !== 'HEAD' ? req : undefined,
-    };
+      body: req.method !== 'GET' && req.method !== 'HEAD' ? req : undefined,
+    } as any;
 
     const request = new Request(url, init);
-    let response;
-    try {
-      response = await entry.fetch(request, {}, undefined);
-    } catch (err) {
-      console.error('entry.fetch failed', err);
-      // Return a safe static fallback HTML so the site doesn't 500 for all routes.
-      const fallback = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Service Unavailable</title></head><body style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b1220;color:#fff"><div style="text-align:center"><h1>Service temporarily unavailable</h1><p>We're experiencing a server issue. Please try again later.</p></div></body></html>`;
-      res.status(502).setHeader('content-type', 'text/html; charset=utf-8');
-      res.send(fallback);
-      return;
-    }
+    const response = await entry.fetch(request, {}, undefined);
 
     // Copy status and headers
     res.status(response.status);
-    response.headers.forEach((value: string, key: string) => res.setHeader(key, value));
+    response.headers.forEach((value: string, key: string) => {
+      // Avoid setting content-encoding if we are letting Vercel handle compression
+      if (key.toLowerCase() !== 'content-encoding') {
+        res.setHeader(key, value);
+      }
+    });
 
     // Pipe body
     const buf = await response.arrayBuffer();
     res.send(Buffer.from(buf));
   } catch (err: any) {
-    console.error('SSR handler error', err);
-    res.status(500).send('Internal Server Error');
+    console.error('SSR handler error:', err);
+    // Return more info in the response to help debug Internal Server Errors
+    res.status(500).json({ 
+      error: 'Internal Server Error', 
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined 
+    });
   }
 }
