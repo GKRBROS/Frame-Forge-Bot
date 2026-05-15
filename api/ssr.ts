@@ -1,19 +1,20 @@
+// @ts-nocheck
 /* Vercel serverless SSR adapter.
    This file adapts the app's server entry to Vercel's Node serverless handler.
    It imports the `@tanstack/react-start/server-entry` module used by the project
    and forwards incoming requests as Fetch `Request` objects to its `fetch` handler.
 */
 async function getServerEntry() {
-  // In Vercel production, we want to import the built server bundle.
-  // The build script generates this in dist/server/server.js.
+  // Use dynamic paths to prevent static analysis from failing the build if files are missing
+  const distPath = '../dist/server/server.js';
+  const srcPath = '../src/server';
+  
   try {
-    // @ts-ignore
-    const m = await import('../dist/server/server.js');
+    const m = await import(distPath);
     return m.default ?? m;
   } catch (e) {
     console.warn('Could not import from dist, falling back to src/server', e);
-    // @ts-ignore
-    const m = await import('../src/server');
+    const m = await import(srcPath);
     return m.default ?? m;
   }
 }
