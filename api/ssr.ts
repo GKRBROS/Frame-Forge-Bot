@@ -7,10 +7,12 @@ async function getServerEntry() {
   // In Vercel production, we want to import the built server bundle.
   // The build script generates this in dist/server/server.js.
   try {
+    // @ts-ignore
     const m = await import('../dist/server/server.js');
     return m.default ?? m;
   } catch (e) {
     console.warn('Could not import from dist, falling back to src/server', e);
+    // @ts-ignore
     const m = await import('../src/server');
     return m.default ?? m;
   }
