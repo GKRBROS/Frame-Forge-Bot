@@ -809,7 +809,11 @@ async function getAdminUserId(): Promise<string | null> {
 
 export const askPublic = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
-    z.object({ question: z.string().trim().min(1).max(2000), level: z.enum(["beginner","intermediate","advanced"]).optional() }).parse(d),
+    z.object({
+      question: z.string().trim().min(1).max(2000),
+      level: z.enum(["beginner","intermediate","advanced"]).optional(),
+      attachmentContext: z.array(z.object({ name: z.string().max(120), content: z.string().max(12000) })).max(4).optional(),
+    }).parse(d),
   )
   .handler(async ({ data }) => {
     const start = Date.now();
@@ -1002,6 +1006,10 @@ export const askPublic = createServerFn({ method: "POST" })
     }
 
     const results = await hybridRetrieveAdmin();
+    const attachmentContext = (data.attachmentContext ?? [])
+      .filter((a) => a.content.trim().length > 0)
+      .map((a, i) => `[Attachment ${i + 1}: ${a.name}]\n${a.content.slice(0, 12000)}`)
+      .join("\n\n---\n\n");
     const rawScores = results.map((r) => r.score ?? 0);
     const topScore = rawScores.length ? Math.max(...rawScores) : 0;
     const confidence = Math.min(1, topScore);
@@ -1034,7 +1042,7 @@ export const askPublic = createServerFn({ method: "POST" })
       .map((r, i) => `[${i + 1}] (${r.source ?? 'unknown'}, confidence: ${(r.score ?? 0).toFixed(2)})\n${r.content}`)
       .join("\n\n---\n\n");
     
-    const contextBlock = [kbBlock, ...webContextItems].filter(Boolean).join("\n\n---\n\n") || "(no matched excerpts - attempting general knowledge)";
+    const contextBlock = [attachmentContext, kbBlock, ...webContextItems].filter(Boolean).join("\n\n---\n\n") || "(no matched excerpts - attempting general knowledge)";
     const useWeb = webContextItems.length > 0;
 
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use ${data.level === 'beginner' ? 'very simple' : data.level === 'intermediate' ? 'clear, concise' : 'detailed and technical'} language and explain all terms.` : '';
@@ -1078,6 +1086,23 @@ export const askPublic = createServerFn({ method: "POST" })
       content: aiResult.content, citations, confidence,
       rejected: wasRejected, latencyMs: Date.now() - start, model: aiResult.model,
     };
+  });
+
+export const extractPublicAttachment = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z.object({
+      name: z.string().trim().min(1).max(200),
+      mimeType: z.string().trim().min(1).max(120),
+      base64: z.string().min(1).max(20_000_000),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const commaIdx = data.base64.indexOf(",");
+    const raw = commaIdx >= 0 ? data.base64.slice(commaIdx + 1) : data.base64;
+    const buf = Buffer.from(raw, "base64");
+    const blob = new Blob([buf], { type: data.mimeType });
+    const content = await extractTextFromBlob(blob, data.mimeType, data.name);
+    return { name: data.name, mimeType: data.mimeType, content };
   });
 
 // ============ ADMIN ACCOUNT BOOTSTRAP (hardcoded credentials) ============

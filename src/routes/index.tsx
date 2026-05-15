@@ -6,11 +6,10 @@ import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "@/hooks/useAuth";
-import { listConversations, getMessages, createConversation, deleteConversation } from "@/lib/rag.functions";
-import { Sparkles, Send, Shield, Loader2, FileText, BookOpen, Paperclip, X, Image as ImageIcon, File as FileIcon } from "lucide-react";
+import { listConversations, getMessages, createConversation, deleteConversation, extractPublicAttachment } from "@/lib/rag.functions";
+import { Sparkles, Send, Shield, Loader2, FileText, BookOpen, Paperclip, X } from "lucide-react";
 import { askPublic } from "@/lib/rag.functions";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -29,6 +28,15 @@ type Msg = {
   citations?: Citation[];
   confidence?: number;
   rejected?: boolean;
+};
+
+type PendingAttachment = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  preview?: string;
+  file: File;
 };
 
 const SUGGESTIONS = [
@@ -53,57 +61,39 @@ function ChatHome() {
   const [level, setLevel] = useState<'beginner'|'intermediate'|'advanced'>('beginner');
   const [showCitations, setShowCitations] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<{ data: string; name: string; type: string } | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  const onFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File is too large (max 10MB)");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      setSelectedFile({
-        data: base64,
-        name: file.name,
-        type: file.type,
-      });
-    };
-    reader.readAsDataURL(file);
-    // Reset input so the same file can be selected again if needed
-    e.target.value = "";
-  };
+  async function readFileAsDataUrl(file: File): Promise<string> {
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(new Error("Failed to read attachment"));
+      reader.readAsDataURL(file);
+    });
+  }
 
   async function send(q: string) {
     const question = q.trim();
     if (!question || loading) return;
     setInput("");
-    
-    const fileToUpload = selectedFile;
-    setSelectedFile(null);
-
     setMessages((m) => [...m, { role: "user", content: question }]);
     setLoading(true);
     try {
-      const r = await ask({ 
-        data: { 
-          question, 
-          level,
-          fileData: fileToUpload?.data,
-          fileName: fileToUpload?.name,
-          fileType: fileToUpload?.type,
-        } 
-      });
+      const extracted = await Promise.all(
+        attachments.map(async (a) => {
+          const base64 = await readFileAsDataUrl(a.file);
+          const r = await extractPublicAttachment({ data: { name: a.name, mimeType: a.mimeType || a.file.type || "application/octet-stream", base64 } });
+          return r;
+        }),
+      );
+      const r = await ask({ data: { question, level, attachmentContext: extracted.map((a) => ({ name: a.name, content: a.content })) } });
       setMessages((m) => [
         ...m,
         {
@@ -120,6 +110,7 @@ function ChatHome() {
         { role: "assistant", content: `⚠️ ${e instanceof Error ? e.message : "Something went wrong"}`, rejected: true },
       ]);
     } finally {
+      setAttachments([]);
       setLoading(false);
     }
   }
@@ -137,13 +128,13 @@ function ChatHome() {
   // Keep exactly one persistent conversation per user.
   useEffect(() => {
     (async () => {
-      if (!user || convs.isLoading) return;
+      if (!user) return;
       const latest = convs.data?.[0];
       if (!activeConv && latest?.id) {
         setActiveConv(latest.id);
         return;
       }
-      if (!activeConv && convs.isSuccess && (!convs.data || convs.data.length === 0)) {
+      if (!activeConv && (!convs.data || convs.data.length === 0)) {
         try {
           const c = await createConv({ data: { title: 'Chat' } });
           if (c?.id) {
@@ -156,7 +147,7 @@ function ChatHome() {
         }
       }
     })();
-  }, [convs.data, convs.isLoading, convs.isSuccess, activeConv, user]);
+  }, [convs.data, activeConv]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -238,74 +229,57 @@ function ChatHome() {
       {/* Composer */}
       <div className="shrink-0">
         <div className="max-w-3xl mx-auto px-4 md:px-6 pb-4 md:pb-6 pt-2 md:pt-3">
-          <AnimatePresence>
-            {selectedFile && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="mb-3 flex items-center gap-3 p-3 glass-card rounded-xl border-primary/20"
-              >
-                <div className="w-10 h-10 rounded-lg bg-primary/10 grid place-items-center shrink-0">
-                  {selectedFile.type.startsWith("image/") ? (
-                    <ImageIcon className="w-5 h-5 text-primary" />
-                  ) : (
-                    <FileIcon className="w-5 h-5 text-primary" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate">{selectedFile.name}</div>
-                  <div className="text-[10px] text-muted-foreground uppercase">Ready to analyze</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedFile(null)}
-                  className="w-8 h-8 rounded-full hover:bg-muted grid place-items-center transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           <motion.form
             initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.2 }}
             onSubmit={(e) => { e.preventDefault(); send(input); }}
             className="glass-card rounded-2xl p-2 flex flex-col sm:flex-row sm:items-center gap-2 shadow-soft"
           >
-            <div className="flex flex-1 items-center">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-10 h-10 rounded-xl hover:bg-primary/10 grid place-items-center text-muted-foreground hover:text-primary transition shrink-0 ml-1"
-                disabled={loading}
-                title="Attach file or image"
-              >
-                <Paperclip className="w-5 h-5" />
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={onFileSelect}
-                className="hidden"
-                accept="image/*,.pdf,.docx,.txt,.csv,.json,.html"
-              />
-              <input
-                autoFocus
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask anything from the knowledge base…"
-                className="w-full bg-transparent outline-none px-3 py-3 placeholder:text-muted-foreground"
-                disabled={loading}
-              />
-            </div>
+            <input
+              autoFocus
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask anything from the knowledge base…"
+              className="w-full sm:flex-1 bg-transparent outline-none px-3 sm:px-4 py-3 placeholder:text-muted-foreground"
+              disabled={loading}
+            />
             <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-2">
               <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => setLevel('beginner')} className={`px-3 py-2 rounded-lg text-xs ${level==='beginner' ? 'bg-primary/15 text-primary' : 'glass'}`}>Beginner</button>
               <button type="button" onClick={() => setLevel('intermediate')} className={`px-3 py-2 rounded-lg text-xs ${level==='intermediate' ? 'bg-primary/15 text-primary' : 'glass'}`}>Intermediate</button>
               <button type="button" onClick={() => setLevel('advanced')} className={`px-3 py-2 rounded-lg text-xs ${level==='advanced' ? 'bg-primary/15 text-primary' : 'glass'}`}>Advanced</button>
               </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                multiple
+                accept="image/*,.pdf,.docx,.txt,.md,.csv,.json,.html,.htm"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.currentTarget.value = "";
+                  if (files.length === 0) return;
+                  setAttachments((prev) => [
+                    ...prev,
+                    ...files.map((file) => ({
+                      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                      name: file.name,
+                      mimeType: file.type || "application/octet-stream",
+                      size: file.size,
+                      preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+                      file,
+                    })),
+                  ]);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-11 h-11 rounded-xl glass grid place-items-center glow-hover"
+                title="Attach files or images"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
               <motion.button
                 whileTap={{ scale: 0.92 }} whileHover={{ scale: 1.05 }}
                 type="submit"
@@ -316,6 +290,24 @@ function ChatHome() {
               </motion.button>
             </div>
           </motion.form>
+          {attachments.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {attachments.map((a) => (
+                <div key={a.id} className="flex items-center gap-2 px-3 py-2 rounded-full glass text-xs">
+                  <FileText className="w-3.5 h-3.5 text-primary" />
+                  <span className="max-w-44 truncate">{a.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                    className="text-muted-foreground hover:text-destructive"
+                    title="Remove attachment"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex items-center justify-center gap-4 mt-3">
             <button
               type="button"
