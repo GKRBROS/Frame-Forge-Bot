@@ -422,6 +422,18 @@ RULES:
 8. Cite sources inline using [n] for KB excerpts and [Wn] for web results. Attachment excerpts do not need citations unless the answer quotes them verbatim.
 9. Never use memory, general knowledge, or assumptions to fill missing details.`;
 
+const SYSTEM_PROMPT_ATTACHMENTS = `You are a document and image reading assistant.
+
+RULES:
+1. Uploaded attachments are the primary source of truth.
+2. Read the attachment text carefully and answer the user's question from it.
+3. If the user's message is vague, infer that they want the question inside the attachment answered.
+4. If the attachment contains a worksheet, exam, or prompt, identify the question in the attachment and answer it.
+5. Do not say the request is outside your knowledge scope when an attachment is present.
+6. If the attachment text is incomplete or unclear, explain what is visible and answer as fully as possible from the visible content.
+7. Cite KB excerpts with [n] only when KB excerpts are available. Attachment excerpts do not need citations unless quoted verbatim.
+8. Never invent text that is not visible in the attachment or provided context.`;
+
 async function fetchWebContext(query: string, limit = 4): Promise<{ contextItems: string[]; citations: Array<{ n: number; document_id: string; document_title: string; excerpt: string; score: number }> }> {
   try {
     const results = await webSearch(query, limit);
@@ -1048,6 +1060,7 @@ export const askPublic = createServerFn({ method: "POST" })
     
     const contextBlock = [attachmentContext, kbBlock, ...webContextItems].filter(Boolean).join("\n\n---\n\n") || "(no matched excerpts - attempting general knowledge)";
     const useWeb = webContextItems.length > 0;
+    const attachmentOnly = hasAttachmentContext && results.length === 0 && webContextItems.length === 0;
 
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use ${data.level === 'beginner' ? 'very simple' : data.level === 'intermediate' ? 'clear, concise' : 'detailed and technical'} language and explain all terms.` : '';
     const attachmentInstr = hasAttachmentContext
@@ -1056,7 +1069,7 @@ export const askPublic = createServerFn({ method: "POST" })
     const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.`;
     
     const messages: ChatMessage[] = [
-      { role: "system", content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
+      { role: "system", content: attachmentOnly ? SYSTEM_PROMPT_ATTACHMENTS : (useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT) },
       ...(attachmentInstr ? [{ role: "system", content: attachmentInstr }] : []),
       ...(levelInstr ? [{ role: "system", content: levelInstr }] : []),
       { role: "system", content: formatInstr },
@@ -1080,6 +1093,51 @@ export const askPublic = createServerFn({ method: "POST" })
         latencyMs: Date.now() - start,
         model,
       };
+    }
+
+    if (hasAttachmentContext && /outside my knowledge scope|couldn't find an answer/i.test(aiResult.content)) {
+      try {
+        const retry = await chatComplete({
+          model,
+          fallbackModel: fallback,
+          temperature: Number(settings?.temperature ?? 0.2),
+          maxTokens: settings?.max_tokens ?? 1024,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT_ATTACHMENTS },
+            { role: "system", content: "You must answer from the uploaded attachment. The user's short prompt is just a request to answer the attachment, not a standalone question." },
+            ...(data.level ? [{ role: "system", content: `Answer for a ${data.level} audience.` }] : []),
+            { role: "user", content: `ATTACHMENT EXCERPTS:\n\n${attachmentContext}\n\nUSER MESSAGE: ${data.question}` },
+          ],
+        });
+        if (retry.content.trim().length > 0 && !/outside my knowledge scope|couldn't find an answer/i.test(retry.content)) {
+          aiResult = retry;
+        }
+      } catch {
+        // Keep the original result if the retry fails.
+      }
+    }
+
+    if (results.length > 0 && /outside my knowledge scope|couldn't find an answer/i.test(aiResult.content)) {
+      try {
+        const retry = await chatComplete({
+          model,
+          fallbackModel: fallback,
+          temperature: Number(settings?.temperature ?? 0.2),
+          maxTokens: settings?.max_tokens ?? 1024,
+          messages: [
+            { role: "system", content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
+            ...(levelInstr ? [{ role: "system", content: levelInstr }] : []),
+            { role: "system", content: "You already have retrieved knowledge-base excerpts. Answer from those excerpts directly. Do not refuse unless the excerpts truly contain nothing relevant." },
+            { role: "system", content: formatInstr },
+            { role: "user", content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
+          ],
+        });
+        if (retry.content.trim().length > 0 && !/outside my knowledge scope|couldn't find an answer/i.test(retry.content)) {
+          aiResult = retry;
+        }
+      } catch {
+        // Keep the original result if the retry fails.
+      }
     }
 
     const wasRejected = !hasAttachmentContext && /outside my knowledge scope/i.test(aiResult.content) && results.length === 0;

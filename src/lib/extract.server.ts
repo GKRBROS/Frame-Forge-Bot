@@ -52,7 +52,7 @@ async function ocrImageWithVision(blob: Blob, mime: string): Promise<string> {
         {
           role: "user",
           content: [
-            { type: "text", text: "Extract ALL readable text from this image verbatim. Preserve structure. Output text only, no commentary." },
+            { type: "text", text: "Read this image carefully. Extract ALL visible text verbatim, preserve line breaks, and if the image contains a question or worksheet, include the question, labels, and any answer choices exactly as shown. Output text only, no commentary." },
             { type: "image_url", image_url: { url: dataUrl } },
           ],
         },
