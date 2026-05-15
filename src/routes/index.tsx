@@ -96,25 +96,13 @@ function ChatHome() {
     }
   }, [msgsQuery.data]);
 
-  // On page load, open a fresh new conversation so users start with a new chat.
+  // Open the latest conversation automatically so the user lands on recent work.
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!user) return;
-      try {
-        const c = await createConv({ data: { title: "New chat" } });
-        if (mounted && c?.id) {
-          setActiveConv(c.id);
-          setMessages([]);
-        }
-      } catch (e) {
-        // If creation fails, fallback to opening latest existing conversation
-        const latestConversation = convs.data?.[0]?.id;
-        if (latestConversation) setActiveConv(latestConversation);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [user]);
+    const latestConversation = convs.data?.[0]?.id;
+    if (!activeConv && latestConversation) {
+      setActiveConv(latestConversation);
+    }
+  }, [convs.data, activeConv]);
 
   return (
     <div className="min-h-screen flex flex-col">
