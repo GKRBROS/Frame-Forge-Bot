@@ -9,6 +9,14 @@ export function isTextMime(mime?: string | null): boolean {
   return mime.startsWith("text/") || mime === "application/json" || mime === "application/xml";
 }
 
+function looksLikeImage(mime: string, filename: string): boolean {
+  return mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|tiff?|avif)$/i.test(filename);
+}
+
+function looksLikePdf(mime: string, filename: string): boolean {
+  return mime === "application/pdf" || /\.pdf$/i.test(filename);
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -62,11 +70,20 @@ export async function extractTextFromBlob(blob: Blob, mime: string, filename = "
   const lower = filename.toLowerCase();
 
   // PDF
-  if (m === "application/pdf" || lower.endsWith(".pdf")) {
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    const pdf = await getDocumentProxy(buf);
-    const { text } = await extractText(pdf, { mergePages: true });
-    return Array.isArray(text) ? text.join("\n\n") : text;
+  if (looksLikePdf(m, lower)) {
+    try {
+      const buf = new Uint8Array(await blob.arrayBuffer());
+      const pdf = await getDocumentProxy(buf);
+      const { text } = await extractText(pdf, { mergePages: true });
+      const parsed = Array.isArray(text) ? text.join("\n\n") : text;
+      if (parsed.trim().length > 0) return parsed;
+    } catch (error) {
+      console.warn("PDF text extraction failed, falling back to raw text", error);
+    }
+
+    const fallback = await blob.text();
+    if (fallback.trim().length > 0) return fallback;
+    throw new Error("Could not extract readable text from the PDF. If it is a scanned document, try converting it to a text-based PDF or uploading a clearer image.");
   }
 
   // DOCX
@@ -85,8 +102,8 @@ export async function extractTextFromBlob(blob: Blob, mime: string, filename = "
   }
 
   // Images → vision OCR
-  if (m.startsWith("image/")) {
-    return await ocrImageWithVision(blob, m || "image/png");
+  if (looksLikeImage(m, lower)) {
+    return await ocrImageWithVision(blob, m || blob.type || "image/png");
   }
 
   // CSV

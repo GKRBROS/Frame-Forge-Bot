@@ -410,13 +410,13 @@ ABSOLUTE RULES:
 const SYSTEM_PROMPT_WITH_WEB = `You are a restricted educational AI assistant.
 
 RULES:
-1. Answer using the provided CONTEXT excerpts from the uploaded knowledge base and optionally labelled web results.
-2. Prefer knowledge-base excerpts over web results when both are present.
+1. Answer using the provided CONTEXT excerpts from the uploaded knowledge base, uploaded attachments, and optionally labelled web results.
+2. Prefer knowledge-base excerpts over attachment excerpts, and prefer those over web results when all are present.
 3. If the context does not directly support the answer, refuse instead of guessing.
-4. If neither the knowledge base nor web results contain the answer, reply: "Sorry, I couldn't find an answer."
+4. If neither the knowledge base, attachments, nor web results contain the answer, reply: "Sorry, I couldn't find an answer."
 5. Structure answers with: Definition, Explanation, Example, Key Points, Optional Notes only when supported by the context.
 6. Adapt explanations to the requested learning level: beginner, intermediate, advanced.
-7. Cite sources inline using [n] for KB excerpts and [Wn] for web results. Do not fabricate citations.
+7. Cite sources inline using [n] for KB excerpts and [Wn] for web results. Attachment excerpts do not need citations unless the answer quotes them verbatim.
 8. Never use memory, general knowledge, or assumptions to fill missing details.`;
 
 async function fetchWebContext(query: string, limit = 4): Promise<{ contextItems: string[]; citations: Array<{ n: number; document_id: string; document_title: string; excerpt: string; score: number }> }> {
@@ -1010,6 +1010,7 @@ export const askPublic = createServerFn({ method: "POST" })
       .filter((a) => a.content.trim().length > 0)
       .map((a, i) => `[Attachment ${i + 1}: ${a.name}]\n${a.content.slice(0, 12000)}`)
       .join("\n\n---\n\n");
+    const hasAttachmentContext = attachmentContext.trim().length > 0;
     const rawScores = results.map((r) => r.score ?? 0);
     const topScore = rawScores.length ? Math.max(...rawScores) : 0;
     const confidence = Math.min(1, topScore);
@@ -1029,7 +1030,7 @@ export const askPublic = createServerFn({ method: "POST" })
     }
 
     // Strict mode: reject when KB support is weak and there is no web fallback
-    if (strict && (results.length === 0 || lowConfidence) && webContextItems.length === 0) {
+    if (strict && !hasAttachmentContext && (results.length === 0 || lowConfidence) && webContextItems.length === 0) {
       console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web' });
       return {
         content: "Sorry, this is outside my knowledge scope.",
