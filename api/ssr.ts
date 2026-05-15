@@ -36,7 +36,17 @@ export default async function handler(req: any, res: any) {
     };
 
     const request = new Request(url, init);
-    const response = await entry.fetch(request, {}, undefined);
+    let response;
+    try {
+      response = await entry.fetch(request, {}, undefined);
+    } catch (err) {
+      console.error('entry.fetch failed', err);
+      // Return a safe static fallback HTML so the site doesn't 500 for all routes.
+      const fallback = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Service Unavailable</title></head><body style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b1220;color:#fff"><div style="text-align:center"><h1>Service temporarily unavailable</h1><p>We're experiencing a server issue. Please try again later.</p></div></body></html>`;
+      res.status(502).setHeader('content-type', 'text/html; charset=utf-8');
+      res.send(fallback);
+      return;
+    }
 
     // Copy status and headers
     res.status(response.status);
