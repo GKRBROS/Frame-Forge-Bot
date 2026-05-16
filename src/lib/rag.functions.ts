@@ -658,8 +658,8 @@ export const askQuestion = createServerFn({ method: "POST" })
       webContextItems = w.contextItems;
     }
 
-    // Strict mode: reject ONLY when the KB has zero results and there is no web fallback
-    if (strict && rejectOutOfScope && results.length === 0 && webCitations.length === 0) {
+    // Strict mode: reject ONLY when the KB has zero results, no web fallback, and it's NOT an educational query
+    if (strict && rejectOutOfScope && results.length === 0 && webCitations.length === 0 && !isEducational) {
       const reply = "Sorry, this is outside my knowledge scope.";
       const { data: assistantMsg } = await supabase.from("messages").insert({
         conversation_id: data.conversationId,
@@ -1045,8 +1045,8 @@ export const askPublic = createServerFn({ method: "POST" })
       webContextItems = w.contextItems;
     }
 
-    // Strict mode: reject ONLY when the KB has zero results, no attachment context, and no web fallback.
-    if (strict && !hasAttachmentContext && results.length === 0 && webContextItems.length === 0) {
+    // Strict mode: reject ONLY when KB has zero results, no attachment, no web, and it's NOT educational.
+    if (strict && !hasAttachmentContext && results.length === 0 && webContextItems.length === 0 && !isEducational) {
       console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web' });
       return {
         content: "Sorry, this is outside my knowledge scope.",
@@ -1070,7 +1070,7 @@ export const askPublic = createServerFn({ method: "POST" })
     const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.`;
     
     const messages: ChatMessage[] = [
-      { role: (attachmentOnly ? "system" : (useWeb ? "system" : "system")) as any, content: attachmentOnly ? SYSTEM_PROMPT_ATTACHMENTS : (useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT) },
+      { role: "system" as any, content: attachmentOnly ? SYSTEM_PROMPT_ATTACHMENTS : (isEducational ? "You are an expert tutor. Prioritize context, but answer from general knowledge if needed." : (useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT)) },
       ...(attachmentInstr ? [{ role: "system" as any, content: attachmentInstr }] : []),
       ...(levelInstr ? [{ role: "system" as any, content: levelInstr }] : []),
       { role: "system" as any, content: formatInstr },
@@ -1124,10 +1124,10 @@ export const askPublic = createServerFn({ method: "POST" })
           temperature: Number(settings?.temperature ?? 0.2),
           maxTokens: settings?.max_tokens ?? 1024,
           messages: [
-            { role: "system" as const, content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
+            { role: "system" as const, content: "You are an expert educational assistant and tutor." },
+            { role: "system" as const, content: "The user is asking an educational or programming question. While you should prioritize the provided CONTEXT EXCERPTS, you ARE allowed to use your general knowledge to provide a complete, clear, and helpful explanation if the excerpts are insufficient." },
             ...(levelInstr ? [{ role: "system" as const, content: levelInstr }] : []),
-            { role: "system" as const, content: "You already have retrieved knowledge-base excerpts. Answer from those excerpts directly. Do not refuse unless the excerpts truly contain nothing relevant." },
-            { role: "system" as const, content: formatInstr },
+            { role: "system" as const, content: "Structure your answer with: Definition, Explanation, Examples, Key Points. Cite the context excerpts with [n] if you use them." },
             { role: "user" as const, content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
           ],
         });
