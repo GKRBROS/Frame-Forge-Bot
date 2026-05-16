@@ -9,11 +9,19 @@ async function getServerEntry() {
     const path = require('path');
     const fs = require('fs');
     const { pathToFileURL } = require('url');
+    
+    const projectRoot = process.cwd();
+    const handlerDir = __dirname;
+    
     const candidates = [
-      path.join(process.cwd(), 'dist', 'server', 'server.js'),
-      path.join(process.cwd(), 'dist', 'server', 'index.js'),
-      path.join(process.cwd(), 'dist', 'server', 'index.cjs'),
+      path.join(projectRoot, 'dist', 'server', 'server.js'),
+      path.join(projectRoot, 'dist', 'server', 'index.js'),
+      path.join(handlerDir, '..', 'dist', 'server', 'server.js'),
+      path.join(handlerDir, '..', 'dist', 'server', 'index.js'),
+      path.join(handlerDir, 'dist', 'server', 'server.js'),
+      path.join(handlerDir, 'dist', 'server', 'index.js'),
     ];
+    
     for (const local of candidates) {
       try {
         if (fs.existsSync(local)) {
