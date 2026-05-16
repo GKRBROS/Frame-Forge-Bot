@@ -704,27 +704,34 @@ export const askQuestion = createServerFn({ method: "POST" })
       ? 'You are generating a visual diagram. Provide a very brief, friendly sentence about the visual you are creating. Do not use the standard structure.'
       : `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.`;
     
-    // NEW: Handle real image generation
+    // NEW: Handle real image generation (Diagram as Image)
     let generatedImageUrl: string | undefined;
     if (data.mode === 'image') {
-      try {
-        const imgResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "bytedance-seed/seedream-4.5",
-            messages: [{ role: "user", content: `Create a professional, educational diagram or visual infographic about: ${data.question}. The visual should be clear, well-structured, and use icons/labels to explain the concept.` }],
-          }),
-        });
-        const imgData = await imgResp.json();
-        const content = imgData.choices?.[0]?.message?.content || "";
-        const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
-        if (urlMatch) generatedImageUrl = urlMatch[0];
-      } catch (err) {
-        console.error('[image-gen] error:', err);
+      const models = ["bytedance-seed/seedream-4.5", "google/imagen-3.0-generate-002", "black-forest-labs/flux-1-schnell"];
+      for (const imgModel of models) {
+        if (generatedImageUrl) break;
+        try {
+          const imgResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: imgModel,
+              messages: [{ role: "user", content: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels.` }],
+            }),
+          });
+          const imgData = await imgResp.json();
+          const content = imgData.choices?.[0]?.message?.content || "";
+          const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
+          if (urlMatch) {
+            const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
+            generatedImageUrl = possibleUrl.replace(/\)$/, '');
+          }
+        } catch (err) {
+          console.error(`[image-gen] ${imgModel} failed:`, err);
+        }
       }
     }
 
@@ -1101,27 +1108,34 @@ export const askPublic = createServerFn({ method: "POST" })
       ? 'You are generating a visual diagram. Provide a very brief, friendly sentence about the visual you are creating. Do not use the standard structure.'
       : `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.`;
     
-    // NEW: Handle real image generation
+    // NEW: Handle real image generation (Diagram as Image)
     let generatedImageUrl: string | undefined;
     if (data.mode === 'image') {
-      try {
-        const imgResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "bytedance-seed/seedream-4.5",
-            messages: [{ role: "user", content: `Create a professional, educational diagram or visual infographic about: ${data.question}. The visual should be clear, well-structured, and use icons/labels to explain the concept.` }],
-          }),
-        });
-        const imgData = await imgResp.json();
-        const content = imgData.choices?.[0]?.message?.content || "";
-        const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
-        if (urlMatch) generatedImageUrl = urlMatch[0];
-      } catch (err) {
-        console.error('[image-gen] error:', err);
+      const models = ["bytedance-seed/seedream-4.5", "google/imagen-3.0-generate-002", "black-forest-labs/flux-1-schnell"];
+      for (const imgModel of models) {
+        if (generatedImageUrl) break;
+        try {
+          const imgResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: imgModel,
+              messages: [{ role: "user", content: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels.` }],
+            }),
+          });
+          const imgData = await imgResp.json();
+          const content = imgData.choices?.[0]?.message?.content || "";
+          const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
+          if (urlMatch) {
+            const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
+            generatedImageUrl = possibleUrl.replace(/\)$/, '');
+          }
+        } catch (err) {
+          console.error(`[image-gen] ${imgModel} failed:`, err);
+        }
       }
     }
 
