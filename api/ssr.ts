@@ -3,13 +3,16 @@
    It imports the `@tanstack/react-start/server-entry` module used by the project
    and forwards incoming requests as Fetch `Request` objects to its `fetch` handler.
 */
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 async function getServerEntry() {
   // Prefer the locally built server entry (dist/server/index.js) when available
   try {
-    const path = require('path');
-    const fs = require('fs');
-    const { pathToFileURL } = require('url');
-    
     const projectRoot = process.cwd();
     const handlerDir = __dirname;
     
@@ -37,19 +40,27 @@ async function getServerEntry() {
           return (m as any).default ?? m;
         } catch (e) {
           console.error('IMPORT FAILED:', local, e);
+          throw e;
         }
       } else {
         console.log('Not found:', local);
       }
     }
-    console.log('No local entry found, falling back to node_modules (WARNING: may use polluted library)');
+    
+    console.error('CRITICAL: No server entry bundle found. Listing /var/task contents:');
+    try {
+      const dir = fs.readdirSync(projectRoot);
+      console.log('Root files:', dir);
+      if (fs.existsSync(path.join(projectRoot, 'dist'))) {
+        console.log('dist files:', fs.readdirSync(path.join(projectRoot, 'dist')));
+      }
+    } catch (e) {}
+
+    throw new Error('Server entry bundle not found.');
   } catch (err) {
     console.error('Error during entry search:', err);
+    throw err;
   }
-
-  // Fallback to the standard server entry (may fail if subpath imports are not defined)
-  const m = await import('@tanstack/react-start/server-entry');
-  return (m as any).default ?? m;
 }
 
 function headersFromRequest(req: any) {

@@ -4,7 +4,10 @@
   "sideEffects": false,
   "type": "module",
   "imports": {
-    "#tanstack-router-entry": "./dist/server/index.js"
+    "#tanstack-router-entry": "./dist/server/index.js",
+    "#tanstack-start-entry": "./dist/server/index.js",
+    "#tanstack-start-plugin-adapters": "./dist/server/index.js",
+    "#tanstack-start-manifest": "./dist/server/index.js"
   },
   "scripts": {
     "preinstall": "node ./scripts/clean-pollution.cjs",
