@@ -407,7 +407,8 @@ ABSOLUTE RULES:
 6. Keep answers factual, clear, and educational. Use markdown for structure only when supported by the context.
 7. Adapt explanations to the requested learning level: beginner, intermediate, advanced.
 8. Never use memory, general knowledge, or assumptions to fill missing details.
-9. If an attachment contains the answer, quote or summarize that attachment instead of refusing.`;
+9. If an attachment contains the answer, quote or summarize that attachment instead of refusing.
+10. For general educational concepts mentioned in the context, provide a clear and helpful explanation.`;
 
 const SYSTEM_PROMPT_WITH_WEB = `You are a restricted educational AI assistant.
 
@@ -471,7 +472,7 @@ function normalizeQueryTokens(query: string): string[] {
 }
 
 function isEducationalQuery(query: string): boolean {
-  return /python|java|data structure|algorithm|loop|function|class|array|list|tuple|string|database|api|html|css|javascript/i.test(query);
+  return /python|java|data\s+structure|algorithm|loop|function|class|array|list|tuple|string|database|api|html|css|javascript|coding|programming|syntax|logic|variable|object|software|web|development/i.test(query);
 }
 
 export const askQuestion = createServerFn({ method: "POST" })
@@ -639,17 +640,13 @@ export const askQuestion = createServerFn({ method: "POST" })
     }
 
     const results = await hybridRetrieve();
-    console.log(`[RAG] Retrieval complete. Found ${results.length} results. Top score: ${results[0]?.finalScore ?? 0}`);
-    if (results.length === 0) {
-      console.log(`[RAG] DEBUG: No results found for user ${userId}. Query: "${data.question}"`);
-    }
     const isEducational = isEducationalQuery(data.question);
 
     // Confidence and low-confidence detection (do not auto-reject purely on threshold)
     const rawScores = results.map((r) => r.finalScore ?? r.score ?? 0);
     const topScore = rawScores.length ? Math.max(...rawScores) : 0;
     const confidence = Math.min(1, topScore);
-    const dynamicThreshold = isEducational ? Math.max(0.22, configuredThreshold) : Math.max(0.35, configuredThreshold);
+    const dynamicThreshold = isEducational ? Math.min(0.20, configuredThreshold) : Math.min(0.30, configuredThreshold);
     const lowConfidence = results.length === 0 || confidence < dynamicThreshold;
 
     // Optional: pull live web context when KB is weak and internet access is enabled
@@ -661,8 +658,8 @@ export const askQuestion = createServerFn({ method: "POST" })
       webContextItems = w.contextItems;
     }
 
-    // Strict mode: reject when the KB support is weak and there is no web fallback
-    if (strict && rejectOutOfScope && (results.length === 0 || lowConfidence) && webCitations.length === 0) {
+    // Strict mode: reject ONLY when the KB has zero results and there is no web fallback
+    if (strict && rejectOutOfScope && results.length === 0 && webCitations.length === 0) {
       const reply = "Sorry, this is outside my knowledge scope.";
       const { data: assistantMsg } = await supabase.from("messages").insert({
         conversation_id: data.conversationId,
@@ -838,7 +835,7 @@ export const askPublic = createServerFn({ method: "POST" })
     const start = Date.now();
     const adminId = await getAdminUserId();
     const { data: settings } = await supabaseAdmin.from("ai_settings").select("*").eq("id", 1).single();
-    const threshold = Number(settings?.confidence_threshold ?? 0.40);
+    const threshold = Number(settings?.confidence_threshold ?? 0.20);
     const model = settings?.active_model ?? "deepseek/deepseek-chat-v3.1";
     const fallback = settings?.fallback_model ?? null;
     const strict = settings?.strict_knowledge ?? true;
@@ -1036,7 +1033,7 @@ export const askPublic = createServerFn({ method: "POST" })
     
     // Adaptive threshold - lower for educational queries
     const isEducational = isEducationalQuery(data.question);
-    const dynamicThreshold = isEducational ? Math.max(0.22, threshold) : Math.max(0.35, threshold);
+    const dynamicThreshold = isEducational ? Math.min(0.20, threshold) : Math.min(0.30, threshold);
     const lowConfidence = results.length === 0 || confidence < dynamicThreshold;
 
     // Optional: pull live web context when KB is weak
@@ -1048,8 +1045,8 @@ export const askPublic = createServerFn({ method: "POST" })
       webContextItems = w.contextItems;
     }
 
-    // Strict mode: reject when KB support is weak, there is no attachment context, and there is no web fallback.
-    if (strict && !hasAttachmentContext && (results.length === 0 || lowConfidence) && webContextItems.length === 0) {
+    // Strict mode: reject ONLY when the KB has zero results, no attachment context, and no web fallback.
+    if (strict && !hasAttachmentContext && results.length === 0 && webContextItems.length === 0) {
       console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web' });
       return {
         content: "Sorry, this is outside my knowledge scope.",
