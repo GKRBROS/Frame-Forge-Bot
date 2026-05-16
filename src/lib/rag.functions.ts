@@ -828,7 +828,7 @@ export const askPublic = createServerFn({ method: "POST" })
     z.object({
       question: z.string().trim().min(1).max(2000),
       level: z.enum(["beginner","intermediate","advanced"]).optional(),
-      attachmentContext: z.array(z.object({ name: z.string().max(120), content: z.string().max(12000) })).max(4).optional(),
+      attachmentContext: z.array(z.object({ name: z.string().max(120), content: z.string().max(100000) })).max(4).optional(),
     }).parse(d),
   )
   .handler(async ({ data }) => {
@@ -1024,7 +1024,7 @@ export const askPublic = createServerFn({ method: "POST" })
     const results = await hybridRetrieveAdmin();
     const attachmentContext = (data.attachmentContext ?? [])
       .filter((a) => a.content.trim().length > 0)
-      .map((a, i) => `[Attachment ${i + 1}: ${a.name}]\n${a.content.slice(0, 12000)}`)
+      .map((a, i) => `[Attachment ${i + 1}: ${a.name}]\n${a.content.slice(0, 80000)}`)
       .join("\n\n---\n\n");
     const hasAttachmentContext = attachmentContext.trim().length > 0;
     const rawScores = results.map((r) => r.score ?? 0);
