@@ -700,7 +700,9 @@ export const askQuestion = createServerFn({ method: "POST" })
     const useWeb = webContextItems.length > 0;
 
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use ${data.level === 'beginner' ? 'very simple' : data.level === 'intermediate' ? 'clear, concise' : 'detailed and technical'} language and explain all terms.` : '';
-    const formatInstr = `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.${data.mode === 'diagram' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
+    const formatInstr = data.mode === 'image' 
+      ? 'You are generating an image. Provide a very brief, friendly sentence about the image you are creating. Do not use the standard structure.'
+      : `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.${data.mode === 'diagram' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
     
     // NEW: Handle real image generation
     let generatedImageUrl: string | undefined;
@@ -713,8 +715,8 @@ export const askQuestion = createServerFn({ method: "POST" })
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "bytedance-seed/seedream-4.5",
-            prompt: data.question,
+            model: "black-forest-labs/flux-1-schnell",
+            messages: [{ role: "user", content: data.question }],
           }),
         });
         const imgData = await imgResp.json();
@@ -1095,7 +1097,9 @@ export const askPublic = createServerFn({ method: "POST" })
     const attachmentInstr = hasAttachmentContext
       ? 'Uploaded attachments are authoritative context. If the answer appears in an attachment, answer from it directly and do not refuse just because KB retrieval is weak.'
       : '';
-    const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.${data.mode === 'diagram' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
+    const formatInstr = data.mode === 'image'
+      ? 'You are generating an image. Provide a very brief, friendly sentence about the image you are creating. Do not use the standard structure.'
+      : `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.${data.mode === 'diagram' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
     
     // NEW: Handle real image generation
     let generatedImageUrl: string | undefined;
@@ -1108,8 +1112,8 @@ export const askPublic = createServerFn({ method: "POST" })
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "bytedance-seed/seedream-4.5",
-            prompt: data.question,
+            model: "black-forest-labs/flux-1-schnell",
+            messages: [{ role: "user", content: data.question }],
           }),
         });
         const imgData = await imgResp.json();
