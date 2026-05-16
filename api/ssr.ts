@@ -13,6 +13,10 @@ async function getServerEntry() {
     const projectRoot = process.cwd();
     const handlerDir = __dirname;
     
+    console.log('--- SSR Entry Search Start ---');
+    console.log('CWD:', projectRoot);
+    console.log('__dirname:', handlerDir);
+    
     const candidates = [
       path.join(projectRoot, 'dist', 'server', 'server.js'),
       path.join(projectRoot, 'dist', 'server', 'index.js'),
@@ -22,21 +26,28 @@ async function getServerEntry() {
       path.join(handlerDir, 'dist', 'server', 'index.js'),
     ];
     
+    console.log('Candidate paths:', candidates);
+    
     for (const local of candidates) {
-      try {
-        if (fs.existsSync(local)) {
-          console.log('Using local server entry:', local);
+      if (fs.existsSync(local)) {
+        console.log('MATCH FOUND:', local);
+        try {
           const m = await import(pathToFileURL(local).href);
+          console.log('IMPORT SUCCESSFUL');
           return (m as any).default ?? m;
+        } catch (e) {
+          console.error('IMPORT FAILED:', local, e);
         }
-      } catch (e) {
-        console.warn('Failed to import local server entry', local, e);
+      } else {
+        console.log('Not found:', local);
       }
     }
+    console.log('No local entry found, falling back to node_modules (WARNING: may use polluted library)');
   } catch (err) {
-    // ignore and fallback
+    console.error('Error during entry search:', err);
   }
 
+  // Fallback to the standard server entry (may fail if subpath imports are not defined)
   const m = await import('@tanstack/react-start/server-entry');
   return (m as any).default ?? m;
 }

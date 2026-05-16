@@ -7,8 +7,9 @@
     "#tanstack-router-entry": "./dist/server/index.js"
   },
   "scripts": {
+    "preinstall": "node ./scripts/clean-pollution.cjs",
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "node ./scripts/clean-pollution.cjs && vite build",
     "postbuild": "node ./scripts/postbuild.cjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
