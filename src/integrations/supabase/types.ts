@@ -195,6 +195,7 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          image_url: string | null
           latency_ms: number | null
           model: string | null
           rejected: boolean | null
@@ -210,6 +211,7 @@ export type Database = {
           conversation_id: string
           created_at?: string
           id?: string
+          image_url?: string | null
           latency_ms?: number | null
           model?: string | null
           rejected?: boolean | null
@@ -225,6 +227,7 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           id?: string
+          image_url?: string | null
           latency_ms?: number | null
           model?: string | null
           rejected?: boolean | null

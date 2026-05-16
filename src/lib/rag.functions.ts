@@ -482,7 +482,7 @@ export const askQuestion = createServerFn({ method: "POST" })
       conversationId: z.string().uuid(),
       question: z.string().trim().min(1).max(2000),
       level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
-      mode: z.enum(["text", "image"]).optional(),
+      mode: z.enum(["text", "diagram", "image"]).optional(),
     }).parse(d),
   )
   .handler(async ({ context, data }) => {
@@ -699,8 +699,33 @@ export const askQuestion = createServerFn({ method: "POST" })
     const contextBlock = [kbBlock, ...webContextItems].filter(Boolean).join("\n\n---\n\n") || "(no excerpts available)";
     const useWeb = webContextItems.length > 0;
 
-    const levelInstr = data.level ? `Answer for a ${data.level} audience. Use clear, ${data.level === 'beginner' ? 'simple' : data.level === 'intermediate' ? 'concise' : 'detailed'} sentences and explain terms as needed.` : '';
-    const formatInstr = `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.${data.mode === 'image' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
+    const levelInstr = data.level ? `Answer for a ${data.level} audience. Use ${data.level === 'beginner' ? 'very simple' : data.level === 'intermediate' ? 'clear, concise' : 'detailed and technical'} language and explain all terms.` : '';
+    const formatInstr = `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.${data.mode === 'diagram' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
+    
+    // NEW: Handle real image generation
+    let generatedImageUrl: string | undefined;
+    if (data.mode === 'image') {
+      try {
+        const imgResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "bytedance-seed/seedream-4.5",
+            prompt: data.question,
+          }),
+        });
+        const imgData = await imgResp.json();
+        const content = imgData.choices?.[0]?.message?.content || "";
+        const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
+        if (urlMatch) generatedImageUrl = urlMatch[0];
+      } catch (err) {
+        console.error('[image-gen] error:', err);
+      }
+    }
+
     const messages: ChatMessage[] = [
       { role: "system" as const, content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
       ...(levelInstr ? [{ role: "system" as const, content: levelInstr }] : []),
@@ -753,10 +778,11 @@ export const askQuestion = createServerFn({ method: "POST" })
       user_id: userId,
       role: "assistant",
       content: aiResult.content,
-      citations,
+      citations: citations as any,
       confidence,
       rejected: wasRejected,
       model: aiResult.model,
+      image_url: generatedImageUrl,
       tokens_in: aiResult.tokensIn,
       tokens_out: aiResult.tokensOut,
       latency_ms: latency,
@@ -829,7 +855,7 @@ export const askPublic = createServerFn({ method: "POST" })
     z.object({
       question: z.string().trim().min(1).max(2000),
       level: z.enum(["beginner","intermediate","advanced"]).optional(),
-      mode: z.enum(["text", "image"]).optional(),
+      mode: z.enum(["text", "diagram", "image"]).optional(),
       attachmentContext: z.array(z.object({ name: z.string().max(120), content: z.string().max(100000) })).max(4).optional(),
     }).parse(d),
   )
@@ -1069,8 +1095,32 @@ export const askPublic = createServerFn({ method: "POST" })
     const attachmentInstr = hasAttachmentContext
       ? 'Uploaded attachments are authoritative context. If the answer appears in an attachment, answer from it directly and do not refuse just because KB retrieval is weak.'
       : '';
-    const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.${data.mode === 'image' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
+    const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.${data.mode === 'diagram' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
     
+    // NEW: Handle real image generation
+    let generatedImageUrl: string | undefined;
+    if (data.mode === 'image') {
+      try {
+        const imgResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "bytedance-seed/seedream-4.5",
+            prompt: data.question,
+          }),
+        });
+        const imgData = await imgResp.json();
+        const content = imgData.choices?.[0]?.message?.content || "";
+        const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
+        if (urlMatch) generatedImageUrl = urlMatch[0];
+      } catch (err) {
+        console.error('[image-gen] error:', err);
+      }
+    }
+
     const messages: ChatMessage[] = [
       { role: "system" as any, content: attachmentOnly ? SYSTEM_PROMPT_ATTACHMENTS : (isEducational ? "You are an expert tutor. Prioritize context, but answer from general knowledge if needed." : (useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT)) },
       ...(attachmentInstr ? [{ role: "system" as any, content: attachmentInstr }] : []),
@@ -1151,6 +1201,7 @@ export const askPublic = createServerFn({ method: "POST" })
 
     return {
       content: aiResult.content, citations, confidence,
+      imageUrl: generatedImageUrl,
       rejected: wasRejected, latencyMs: Date.now() - start, model: aiResult.model,
     };
   });

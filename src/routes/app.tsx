@@ -115,6 +115,11 @@ function MessageBubble({ m, showCitations }: { m: any; showCitations?: boolean }
             {m.content}
           </ReactMarkdown>
         </div>
+        {m.image_url && (
+          <div className="mt-4 rounded-xl overflow-hidden border border-white/10 shadow-lg">
+            <img src={m.image_url} alt="Generated result" className="w-full h-auto object-cover max-h-[500px]" />
+          </div>
+        )}
         {m.confidence != null && !isUser && (
           <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
             {m.rejected ? <AlertCircle className="w-3 h-3 text-warning" /> : <CheckCircle2 className="w-3 h-3 text-success" />}
