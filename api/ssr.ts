@@ -79,7 +79,7 @@ export default async function handler(req: any, res: any) {
     const request = new Request(url, init);
     let response;
     try {
-      response = await entry.fetch(request, {}, undefined);
+      response = await entry.fetch(request, process.env, undefined);
     } catch (err) {
       console.error('entry.fetch failed', err);
       // Return a safe static fallback HTML so the site doesn't 500 for all routes.
