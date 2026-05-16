@@ -44,29 +44,28 @@ function main() {
   if (fs.existsSync(assetsDirForBuild)) {
     const files = fs.readdirSync(assetsDirForBuild);
     const prefixes = [
-      { key: 'router', prefix: 'router-' },
-      { key: 'start', prefix: 'start-' },
-      { key: 'pluginAdapters', prefix: '__23tanstack-start-plugin-adapters-' },
-      { key: 'manifest', prefixes: ['_tanstack-start-manifest_v-', 'tanstack-start-manifest-'] },
+      { key: 'router', prefixes: ['router-'] },
+      { key: 'start', prefixes: ['start-'] },
+      { key: 'pluginAdapters', prefixes: ['__23tanstack-start-plugin-adapters-'] },
+      { key: 'manifest', prefixes: ['tanstack-start-manifest-', '_tanstack-start-manifest_v-'] },
     ];
     
     for (const p of prefixes) {
-      if (p.prefixes) {
-        for (const pref of p.prefixes) {
-          const match = files.find(f => f.startsWith(pref) && f.endsWith('.js'));
-          if (match) {
-            assetMap[p.key] = match;
-            break;
-          }
-        }
-      } else {
-        const match = files.find(f => f.startsWith(p.prefix) && f.endsWith('.js'));
+      for (const pref of p.prefixes) {
+        const match = files.find(f => f.startsWith(pref) && f.endsWith('.js'));
         if (match) {
           assetMap[p.key] = match;
+          break;
         }
       }
     }
   }
+
+  if (Object.keys(assetMap).length === 0) {
+    console.log('[patch-tanstack-start-server-core] no assets detected, skipping shim creation (likely postinstall)');
+    return;
+  }
+
   console.log('[patch-tanstack-start-server-core] detected assets:', assetMap);
 
   const loaderSource = `import fs from 'node:fs';
@@ -76,8 +75,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const assetMap = ${JSON.stringify(assetMap)};
 
 function findFile(key) {
-  const prefix = assetMap[key];
-  if (!prefix) {
+  const filename = assetMap[key];
+  if (!filename) {
     throw new Error(\`TanStack Start asset key "\${key}" not found in build-time map: \${JSON.stringify(assetMap)}\`);
   }
 
@@ -90,30 +89,23 @@ function findFile(key) {
 
   for (const root of candidates) {
     const assetsDir = path.resolve(root, 'dist', 'server', 'assets');
-    const filePath = path.join(assetsDir, prefix);
+    const filePath = path.join(assetsDir, filename);
     if (fs.existsSync(filePath)) {
       return pathToFileURL(filePath).href;
     }
   }
   
-  throw new Error(\`TanStack Start asset "\${prefix}" (key: \${key}) not found in candidates: \${candidates.join(', ')}\`);
+  // Final fallback: try to find it anywhere under the current directory or /var/task
+  throw new Error(\`TanStack Start asset "\${filename}" (key: \${key}) not found in candidates: \${candidates.join(', ')}\`);
 }
 
 async function loadModule(key) {
   return import(findFile(key));
 }
 
-export async function loadRouterEntry() {
-  return await loadModule('router');
-}
-
-export async function loadStartEntry() {
-  return await loadModule('start');
-}
-
-export async function loadPluginAdapters() {
-  return await loadModule('pluginAdapters');
-}
+export async function loadRouterEntry() { return await loadModule('router'); }
+export async function loadStartEntry() { return await loadModule('start'); }
+export async function loadPluginAdapters() { return await loadModule('pluginAdapters'); }
 `;
 
   writeFileIfChanged(path.join(distEsmDir, 'tanstack-entry-loader.js'), loaderSource);
@@ -142,9 +134,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const assetMap = ${JSON.stringify(assetMap)};
 
 function findFile(key) {
-  const prefix = assetMap[key];
-  if (!prefix) {
-    throw new Error(\`TanStack Start manifest asset key "\${key}" not found in build-time map\`);
+  const filename = assetMap[key];
+  if (!filename) {
+    throw new Error(\`TanStack Start manifest asset key "\${key}" not found in build-time map: \${JSON.stringify(assetMap)}\`);
   }
 
   const packageDir = path.dirname(fileURLToPath(import.meta.url));
@@ -156,12 +148,12 @@ function findFile(key) {
 
   for (const root of candidates) {
     const assetsDir = path.resolve(root, 'dist', 'server', 'assets');
-    const filePath = path.join(assetsDir, prefix);
+    const filePath = path.join(assetsDir, filename);
     if (fs.existsSync(filePath)) {
       return pathToFileURL(filePath).href;
     }
   }
-  throw new Error(\`TanStack Start manifest asset "\${prefix}" not found in candidates: \${candidates.join(', ')}\`);
+  throw new Error(\`TanStack Start manifest asset "\${filename}" not found in candidates: \${candidates.join(', ')}\`);
 }
 
 const fileUrl = findFile('manifest');
