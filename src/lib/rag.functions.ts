@@ -351,14 +351,14 @@ export const getMessages = createServerFn({ method: "POST" })
       user_id: context.userId,
       conversation_id: data.conversationId,
       question: convo?.title ? `Opened conversation: ${convo.title}` : "Opened conversation",
-      event_type: "chat_open",
-      event_label: convo?.title ?? "Conversation opened",
+      event_type: "chat_open" as any,
+      event_label: (convo?.title ?? "Conversation opened") as any,
       confidence: 1,
       rejected: false,
       latency_ms: 0,
       tokens_in: 0,
       tokens_out: 0,
-    });
+    } as any);
 
     const { data: msgs, error } = await supabase
       .from("messages")
@@ -675,13 +675,13 @@ export const askQuestion = createServerFn({ method: "POST" })
         user_id: userId,
         conversation_id: data.conversationId,
         question: data.question,
-        event_type: "question",
-        event_label: data.level ? `Level: ${data.level}` : "Question",
+        event_type: "question" as any,
+        event_label: (data.level ? `Level: ${data.level}` : "Question") as any,
         confidence,
         rejected: true,
         model,
         latency_ms: Date.now() - start,
-      });
+      } as any);
       await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", data.conversationId);
       return { message: assistantMsg, citations: [] };
     }
@@ -701,11 +701,11 @@ export const askQuestion = createServerFn({ method: "POST" })
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use clear, ${data.level === 'beginner' ? 'simple' : data.level === 'intermediate' ? 'concise' : 'detailed'} sentences and explain terms as needed.` : '';
     const formatInstr = `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.`;
     const messages: ChatMessage[] = [
-      { role: "system", content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
-      ...(levelInstr ? [{ role: "system", content: levelInstr }] : []),
-      { role: "system", content: formatInstr },
+      { role: "system" as const, content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
+      ...(levelInstr ? [{ role: "system" as const, content: levelInstr }] : []),
+      { role: "system" as const, content: formatInstr },
       {
-        role: "user",
+        role: "user" as const,
         content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}`,
       },
     ];
@@ -766,15 +766,15 @@ export const askQuestion = createServerFn({ method: "POST" })
       user_id: userId,
       conversation_id: data.conversationId,
       question: data.question,
-      event_type: "question",
-      event_label: data.level ? `Level: ${data.level}` : "Question",
+      event_type: "question" as any,
+      event_label: (data.level ? `Level: ${data.level}` : "Question") as any,
       confidence,
       rejected: wasRejected,
       model: aiResult.model,
       tokens_in: aiResult.tokensIn,
       tokens_out: aiResult.tokensOut,
       latency_ms: latency,
-    });
+    } as any);
     await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", data.conversationId);
 
     return { message: assistantMsg, citations };
@@ -858,8 +858,8 @@ export const askPublic = createServerFn({ method: "POST" })
       const [semanticResults, keywordResults] = await Promise.all([
         Promise.all(
           queryExpansions.map(async (expandedQuery) => {
-            const { data: hits, error: searchErr } = await supabaseAdmin.rpc("search_chunks", {
-              _user_id: adminId,
+            const { data: hits, error: searchErr } = await (supabaseAdmin.rpc as any)("search_chunks", {
+              _user_id: adminId as string,
               _query: expandedQuery,
               _limit: Math.min(limit, 8),
             });
@@ -868,8 +868,8 @@ export const askPublic = createServerFn({ method: "POST" })
           }),
         ),
         queryTokens.length > 0
-          ? supabaseAdmin.rpc("search_chunks_keyword", {
-              _user_id: adminId,
+          ? (supabaseAdmin.rpc as any)("search_chunks_keyword", {
+              _user_id: adminId as string,
               _keywords: queryTokens,
               _limit: Math.min(limit, 8),
             })
@@ -919,7 +919,7 @@ export const askPublic = createServerFn({ method: "POST" })
         const { data: docs } = await supabaseAdmin
           .from('documents')
           .select('id,title')
-          .eq('user_id', adminId)
+          .eq('user_id', adminId as string)
           .ilike('title', `%${titleTokens[0] ?? ''}%`)
           .limit(10);
 
@@ -1070,11 +1070,11 @@ export const askPublic = createServerFn({ method: "POST" })
     const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.`;
     
     const messages: ChatMessage[] = [
-      { role: "system", content: attachmentOnly ? SYSTEM_PROMPT_ATTACHMENTS : (useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT) },
-      ...(attachmentInstr ? [{ role: "system", content: attachmentInstr }] : []),
-      ...(levelInstr ? [{ role: "system", content: levelInstr }] : []),
-      { role: "system", content: formatInstr },
-      { role: "user", content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
+      { role: (attachmentOnly ? "system" : (useWeb ? "system" : "system")) as any, content: attachmentOnly ? SYSTEM_PROMPT_ATTACHMENTS : (useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT) },
+      ...(attachmentInstr ? [{ role: "system" as any, content: attachmentInstr }] : []),
+      ...(levelInstr ? [{ role: "system" as any, content: levelInstr }] : []),
+      { role: "system" as any, content: formatInstr },
+      { role: "user" as any, content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
     ];
 
     let aiResult;
@@ -1099,16 +1099,14 @@ export const askPublic = createServerFn({ method: "POST" })
     if (hasAttachmentContext && /outside my knowledge scope|couldn't find an answer/i.test(aiResult.content)) {
       try {
         const retry = await chatComplete({
-          model,
-          fallbackModel: fallback,
+          model, fallbackModel: fallback,
+          messages: [
+            ...messages,
+            { role: "assistant" as const, content: aiResult.content },
+            { role: "user" as const, content: "Wait, the knowledge base OR the attachments DO have relevant information. Please look again carefully and answer the user question if the answer is visible in the provided context." },
+          ],
           temperature: Number(settings?.temperature ?? 0.2),
           maxTokens: settings?.max_tokens ?? 1024,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT_ATTACHMENTS },
-            { role: "system", content: "You must answer from the uploaded attachment. The user's short prompt is just a request to answer the attachment, not a standalone question." },
-            ...(data.level ? [{ role: "system", content: `Answer for a ${data.level} audience.` }] : []),
-            { role: "user", content: `ATTACHMENT EXCERPTS:\n\n${attachmentContext}\n\nUSER MESSAGE: ${data.question}` },
-          ],
         });
         if (retry.content.trim().length > 0 && !/outside my knowledge scope|couldn't find an answer/i.test(retry.content)) {
           aiResult = retry;
@@ -1126,11 +1124,11 @@ export const askPublic = createServerFn({ method: "POST" })
           temperature: Number(settings?.temperature ?? 0.2),
           maxTokens: settings?.max_tokens ?? 1024,
           messages: [
-            { role: "system", content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
-            ...(levelInstr ? [{ role: "system", content: levelInstr }] : []),
-            { role: "system", content: "You already have retrieved knowledge-base excerpts. Answer from those excerpts directly. Do not refuse unless the excerpts truly contain nothing relevant." },
-            { role: "system", content: formatInstr },
-            { role: "user", content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
+            { role: "system" as const, content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
+            ...(levelInstr ? [{ role: "system" as const, content: levelInstr }] : []),
+            { role: "system" as const, content: "You already have retrieved knowledge-base excerpts. Answer from those excerpts directly. Do not refuse unless the excerpts truly contain nothing relevant." },
+            { role: "system" as const, content: formatInstr },
+            { role: "user" as const, content: `CONTEXT EXCERPTS:\n\n${contextBlock}\n\nQUESTION: ${data.question}` },
           ],
         });
         if (retry.content.trim().length > 0 && !/outside my knowledge scope|couldn't find an answer/i.test(retry.content)) {
@@ -1254,24 +1252,24 @@ export const getAnalytics = createServerFn({ method: "GET" })
 
     let logsQuery = supabaseAdmin
       .from("query_logs")
-      .select("confidence,rejected,model,tokens_in,tokens_out,latency_ms,created_at,question")
+      .select("confidence,rejected,model,tokens_in,tokens_out,latency_ms,created_at,question,event_type,event_label,conversation_id")
       .order("created_at", { ascending: false })
-      .limit(1000);
+      .limit(1000) as any;
     if (!isAdmin) logsQuery = logsQuery.eq("user_id", userId);
-    const { data: logs } = await logsQuery;
+    const { data: logs } = await (logsQuery as any);
 
-    const all = logs ?? [];
+    const all = (logs ?? []) as any[];
     const totalQueries = all.length;
-    const rejectedCount = all.filter((l) => l.rejected).length;
+    const rejectedCount = all.filter((l: any) => l.rejected).length;
     const avgConfidence = totalQueries
-      ? all.reduce((s, l) => s + Number(l.confidence ?? 0), 0) / totalQueries
+      ? all.reduce((s: number, l: any) => s + Number(l.confidence ?? 0), 0) / totalQueries
       : 0;
     const avgLatency = totalQueries
-      ? all.reduce((s, l) => s + (l.latency_ms ?? 0), 0) / totalQueries
+      ? all.reduce((s: number, l: any) => s + (l.latency_ms ?? 0), 0) / totalQueries
       : 0;
-    const totalTokensIn = all.reduce((s, l) => s + (l.tokens_in ?? 0), 0);
-    const totalTokensOut = all.reduce((s, l) => s + (l.tokens_out ?? 0), 0);
-    const recentLogs = all.map((l) => ({
+    const totalTokensIn = all.reduce((s: number, l: any) => s + (l.tokens_in ?? 0), 0);
+    const totalTokensOut = all.reduce((s: number, l: any) => s + (l.tokens_out ?? 0), 0);
+    const recentLogs = all.map((l: any) => ({
       event_type: l.event_type ?? "question",
       event_label: l.event_label ?? null,
       question: l.question,
@@ -1317,7 +1315,7 @@ export const getAnalytics = createServerFn({ method: "GET" })
         bytes: docList.reduce((s, d) => s + (d.byte_size ?? 0), 0),
       },
       daily,
-      recentRejected: all.filter((l) => l.rejected).slice(0, 10).map((l) => ({
+      recentRejected: all.filter((l: any) => l.rejected).slice(0, 10).map((l: any) => ({
         question: l.question,
         confidence: l.confidence,
         created_at: l.created_at,

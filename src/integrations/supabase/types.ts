@@ -29,6 +29,7 @@ export type Database = {
           out_of_scope_rejection: boolean
           strict_knowledge: boolean
           temperature: number
+          top_k: number
           updated_at: string
         }
         Insert: {
@@ -45,6 +46,7 @@ export type Database = {
           out_of_scope_rejection?: boolean
           strict_knowledge?: boolean
           temperature?: number
+          top_k?: number
           updated_at?: string
         }
         Update: {
@@ -61,6 +63,7 @@ export type Database = {
           out_of_scope_rejection?: boolean
           strict_knowledge?: boolean
           temperature?: number
+          top_k?: number
           updated_at?: string
         }
         Relationships: []
@@ -272,8 +275,11 @@ export type Database = {
           confidence: number | null
           conversation_id: string | null
           created_at: string
+          event_label: string | null
+          event_type: string
           id: string
           latency_ms: number | null
+          metadata: Json
           model: string | null
           question: string
           rejected: boolean
@@ -285,8 +291,11 @@ export type Database = {
           confidence?: number | null
           conversation_id?: string | null
           created_at?: string
+          event_label?: string | null
+          event_type?: string
           id?: string
           latency_ms?: number | null
+          metadata?: Json
           model?: string | null
           question: string
           rejected?: boolean
@@ -298,8 +307,11 @@ export type Database = {
           confidence?: number | null
           conversation_id?: string | null
           created_at?: string
+          event_label?: string | null
+          event_type?: string
           id?: string
           latency_ms?: number | null
+          metadata?: Json
           model?: string | null
           question?: string
           rejected?: boolean
@@ -352,6 +364,16 @@ export type Database = {
       }
       search_chunks: {
         Args: { _limit?: number; _query: string; _user_id: string }
+        Returns: {
+          chunk_id: string
+          content: string
+          document_id: string
+          document_title: string
+          score: number
+        }[]
+      }
+      search_chunks_keyword: {
+        Args: { _keywords: string[]; _limit?: number; _user_id: string }
         Returns: {
           chunk_id: string
           content: string
