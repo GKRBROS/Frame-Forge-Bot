@@ -708,42 +708,40 @@ export const askQuestion = createServerFn({ method: "POST" })
     let generatedImageUrl: string | undefined;
     let imgError: string | undefined;
     if (data.mode === 'image') {
-      const models = ["bytedance-seed/seedream-4.5", "google/imagen-3.0-generate-002", "black-forest-labs/flux-1-schnell"];
+      const models = ["openai/dall-e-3", "bytedance-seed/seedream-4.5", "google/imagen-3.0-generate-002", "black-forest-labs/flux-1-schnell"];
       for (const imgModel of models) {
         if (generatedImageUrl) break;
         try {
-          const imgResp = await fetch("https://openrouter.ai/api/v1/images/generations", {
+          const chatResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
-            headers: {
-              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            headers: { 
+              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, 
               "Content-Type": "application/json",
+              "HTTP-Referer": "https://knowledge-scope.ai",
+              "X-Title": "Knowledge Scope AI"
             },
             body: JSON.stringify({
               model: imgModel,
-              prompt: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels.`,
+              messages: [{ role: "user", content: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels. Provide ONLY the direct image URL.` }],
             }),
           });
-          const imgData = await imgResp.json();
-          if (imgData.data?.[0]?.url) {
-            generatedImageUrl = imgData.data[0].url;
-          } else {
-            const chatResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                model: imgModel,
-                messages: [{ role: "user", content: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels.` }],
-              }),
-            });
-            const chatData = await chatResp.json();
-            const content = chatData.choices?.[0]?.message?.content || "";
-            const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
-            if (urlMatch) {
-              const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
-              generatedImageUrl = possibleUrl.replace(/\)$/, '');
-            } else if (chatData.error) {
-              imgError = chatData.error.message;
-            }
+          
+          if (!chatResp.ok) {
+            const errBody = await chatResp.text();
+            console.error(`[image-gen] ${imgModel} API error:`, chatResp.status, errBody.slice(0, 100));
+            continue;
+          }
+
+          const chatData = await chatResp.json();
+          const content = chatData.choices?.[0]?.message?.content || "";
+          const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
+          if (urlMatch) {
+            const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
+            generatedImageUrl = possibleUrl.replace(/\)$/, '');
+          } else if (chatData.data?.[0]?.url) {
+            generatedImageUrl = chatData.data[0].url;
+          } else if (chatData.error) {
+            imgError = chatData.error.message;
           }
         } catch (err) {
           console.error(`[image-gen] ${imgModel} failed:`, err);
@@ -1132,42 +1130,41 @@ export const askPublic = createServerFn({ method: "POST" })
     let generatedImageUrl: string | undefined;
     let imgError: string | undefined;
     if (data.mode === 'image') {
-      const models = ["bytedance-seed/seedream-4.5", "google/imagen-3.0-generate-002", "black-forest-labs/flux-1-schnell"];
+      const models = ["openai/dall-e-3", "bytedance-seed/seedream-4.5", "google/imagen-3.0-generate-002", "black-forest-labs/flux-1-schnell"];
       for (const imgModel of models) {
         if (generatedImageUrl) break;
         try {
-          const imgResp = await fetch("https://openrouter.ai/api/v1/images/generations", {
+          const chatResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
-            headers: {
-              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            headers: { 
+              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, 
               "Content-Type": "application/json",
+              "HTTP-Referer": "https://knowledge-scope.ai",
+              "X-Title": "Knowledge Scope AI"
             },
             body: JSON.stringify({
               model: imgModel,
-              prompt: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels.`,
+              messages: [{ role: "user", content: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels. Provide ONLY the direct image URL.` }],
             }),
           });
-          const imgData = await imgResp.json();
-          if (imgData.data?.[0]?.url) {
-            generatedImageUrl = imgData.data[0].url;
-          } else {
-            const chatResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                model: imgModel,
-                messages: [{ role: "user", content: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels.` }],
-              }),
-            });
-            const chatData = await chatResp.json();
-            const content = chatData.choices?.[0]?.message?.content || "";
-            const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
-            if (urlMatch) {
-              const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
-              generatedImageUrl = possibleUrl.replace(/\)$/, '');
-            } else if (chatData.error) {
-              imgError = chatData.error.message;
-            }
+          
+          if (!chatResp.ok) {
+            const errBody = await chatResp.text();
+            console.error(`[image-gen] ${imgModel} API error:`, chatResp.status, errBody.slice(0, 100));
+            continue;
+          }
+
+          const chatData = await chatResp.json();
+          const content = chatData.choices?.[0]?.message?.content || "";
+          // Check for URL in content or in data[0].url (some proxies use one or the other)
+          const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
+          if (urlMatch) {
+            const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
+            generatedImageUrl = possibleUrl.replace(/\)$/, '');
+          } else if (chatData.data?.[0]?.url) {
+            generatedImageUrl = chatData.data[0].url;
+          } else if (chatData.error) {
+            imgError = chatData.error.message;
           }
         } catch (err) {
           console.error(`[image-gen] ${imgModel} failed:`, err);
