@@ -708,45 +708,46 @@ export const askQuestion = createServerFn({ method: "POST" })
     let generatedImageUrl: string | undefined;
     let imgError: string | undefined;
     if (data.mode === 'image') {
-      const models = ["openai/dall-e-3", "bytedance-seed/seedream-4.5", "google/imagen-3.0-generate-002", "black-forest-labs/flux-1-schnell"];
-      for (const imgModel of models) {
-        if (generatedImageUrl) break;
-        try {
-          const chatResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: { 
-              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, 
-              "Content-Type": "application/json",
-              "HTTP-Referer": "https://knowledge-scope.ai",
-              "X-Title": "Knowledge Scope AI"
-            },
-            body: JSON.stringify({
-              model: imgModel,
-              messages: [{ role: "user", content: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels. Provide ONLY the direct image URL.` }],
-            }),
-          });
-          
-          if (!chatResp.ok) {
-            const errBody = await chatResp.text();
-            console.error(`[image-gen] ${imgModel} API error:`, chatResp.status, errBody.slice(0, 100));
-            continue;
-          }
-
+      try {
+        const chatResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: { 
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, 
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://knowledge-scope.ai",
+            "X-Title": "Knowledge Scope AI"
+          },
+          body: JSON.stringify({
+            model: "bytedance-seed/seedream-4.5",
+            messages: [{ role: "user", content: `A professional, high-quality educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels.` }],
+            modalities: ["image"] // Required for ByteDance Seed models on OpenRouter
+          }),
+        });
+        
+        if (!chatResp.ok) {
+          const errBody = await chatResp.text();
+          console.error(`[image-gen] Seedream API error:`, chatResp.status, errBody.slice(0, 100));
+          imgError = `API ${chatResp.status}: ${errBody.slice(0, 50)}`;
+        } else {
           const chatData = await chatResp.json();
-          const content = chatData.choices?.[0]?.message?.content || "";
-          const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
-          if (urlMatch) {
-            const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
-            generatedImageUrl = possibleUrl.replace(/\)$/, '');
-          } else if (chatData.data?.[0]?.url) {
-            generatedImageUrl = chatData.data[0].url;
+          // Correct response parsing for multimodal image models on OpenRouter
+          if (chatData.choices?.[0]?.message?.images?.[0]?.image_url?.url) {
+            generatedImageUrl = chatData.choices[0].message.images[0].image_url.url;
           } else if (chatData.error) {
             imgError = chatData.error.message;
+          } else {
+            // Fallback: check if it returned a URL in the text content anyway
+            const content = chatData.choices?.[0]?.message?.content || "";
+            const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
+            if (urlMatch) {
+              const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
+              generatedImageUrl = possibleUrl.replace(/\)$/, '');
+            }
           }
-        } catch (err) {
-          console.error(`[image-gen] ${imgModel} failed:`, err);
-          imgError = err instanceof Error ? err.message : "Network error";
         }
+      } catch (err) {
+        console.error(`[image-gen] Seedream failed:`, err);
+        imgError = err instanceof Error ? err.message : "Network error";
       }
     }
 
@@ -1130,46 +1131,44 @@ export const askPublic = createServerFn({ method: "POST" })
     let generatedImageUrl: string | undefined;
     let imgError: string | undefined;
     if (data.mode === 'image') {
-      const models = ["openai/dall-e-3", "bytedance-seed/seedream-4.5", "google/imagen-3.0-generate-002", "black-forest-labs/flux-1-schnell"];
-      for (const imgModel of models) {
-        if (generatedImageUrl) break;
-        try {
-          const chatResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: { 
-              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, 
-              "Content-Type": "application/json",
-              "HTTP-Referer": "https://knowledge-scope.ai",
-              "X-Title": "Knowledge Scope AI"
-            },
-            body: JSON.stringify({
-              model: imgModel,
-              messages: [{ role: "user", content: `Professional educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels. Provide ONLY the direct image URL.` }],
-            }),
-          });
-          
-          if (!chatResp.ok) {
-            const errBody = await chatResp.text();
-            console.error(`[image-gen] ${imgModel} API error:`, chatResp.status, errBody.slice(0, 100));
-            continue;
-          }
-
+      try {
+        const chatResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: { 
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, 
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://knowledge-scope.ai",
+            "X-Title": "Knowledge Scope AI"
+          },
+          body: JSON.stringify({
+            model: "bytedance-seed/seedream-4.5",
+            messages: [{ role: "user", content: `A professional, high-quality educational diagram or visual infographic about: ${data.question}. Clear, high resolution, professional labels.` }],
+            modalities: ["image"]
+          }),
+        });
+        
+        if (!chatResp.ok) {
+          const errBody = await chatResp.text();
+          console.error(`[image-gen] Seedream API error:`, chatResp.status, errBody.slice(0, 100));
+          imgError = `API ${chatResp.status}: ${errBody.slice(0, 50)}`;
+        } else {
           const chatData = await chatResp.json();
-          const content = chatData.choices?.[0]?.message?.content || "";
-          // Check for URL in content or in data[0].url (some proxies use one or the other)
-          const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
-          if (urlMatch) {
-            const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
-            generatedImageUrl = possibleUrl.replace(/\)$/, '');
-          } else if (chatData.data?.[0]?.url) {
-            generatedImageUrl = chatData.data[0].url;
+          if (chatData.choices?.[0]?.message?.images?.[0]?.image_url?.url) {
+            generatedImageUrl = chatData.choices[0].message.images[0].image_url.url;
           } else if (chatData.error) {
             imgError = chatData.error.message;
+          } else {
+            const content = chatData.choices?.[0]?.message?.content || "";
+            const urlMatch = content.match(/https?:\/\/[^\s\)]+/) || content.match(/\((https?:\/\/[^\s\)]+)\)/);
+            if (urlMatch) {
+              const possibleUrl = Array.isArray(urlMatch) ? urlMatch[urlMatch.length - 1] : urlMatch[0];
+              generatedImageUrl = possibleUrl.replace(/\)$/, '');
+            }
           }
-        } catch (err) {
-          console.error(`[image-gen] ${imgModel} failed:`, err);
-          imgError = err instanceof Error ? err.message : "Network error";
         }
+      } catch (err) {
+        console.error(`[image-gen] Seedream failed:`, err);
+        imgError = err instanceof Error ? err.message : "Network error";
       }
     }
 
