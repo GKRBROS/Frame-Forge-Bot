@@ -23,8 +23,12 @@ async function getServerEntry() {
     const candidates = [
       path.join(projectRoot, 'dist', 'server', 'server.js'),
       path.join(projectRoot, 'dist', 'server', 'index.js'),
+      path.join(projectRoot, 'server', 'server.js'),
+      path.join(projectRoot, 'server', 'index.js'),
       path.join(handlerDir, '..', 'dist', 'server', 'server.js'),
       path.join(handlerDir, '..', 'dist', 'server', 'index.js'),
+      path.join(handlerDir, '..', 'server', 'server.js'),
+      path.join(handlerDir, '..', 'server', 'index.js'),
       path.join(handlerDir, 'dist', 'server', 'server.js'),
       path.join(handlerDir, 'dist', 'server', 'index.js'),
     ];

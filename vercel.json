@@ -2,17 +2,17 @@
   "version": 2,
   "functions": {
     "api/ssr.ts": {
-      "includeFiles": "dist/server/**"
+      "includeFiles": "dist/**"
     }
   },
   "routes": [
     {
       "src": "/assets/(.*)",
-      "dest": "/dist/client/assets/$1"
+      "dest": "/client/assets/$1"
     },
     {
       "src": "/favicon.ico",
-      "dest": "/dist/client/favicon.ico"
+      "dest": "/client/favicon.ico"
     },
     {
       "src": "/(.*)",
