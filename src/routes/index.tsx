@@ -6,9 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "@/hooks/useAuth";
-import { listConversations, getMessages, createConversation, deleteConversation, extractPublicAttachment } from "@/lib/rag.functions";
-import { Sparkles, Send, Shield, Loader2, FileText, BookOpen, Paperclip, X } from "lucide-react";
-import { askPublic } from "@/lib/rag.functions";
+import { askPublic, listConversations, getMessages, createConversation, deleteConversation, extractPublicAttachment } from "@/lib/rag.functions";
+import { Sparkles, Send, Shield, Loader2, FileText, BookOpen, Paperclip, X, ChevronDown, Type, Image as ImageIcon, LayoutDashboard } from "lucide-react";
+import { Mermaid } from "@/components/Mermaid";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const Route = createFileRoute("/")({
@@ -66,7 +66,10 @@ function ChatHome() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [level, setLevel] = useState<'beginner'|'intermediate'|'advanced'>('beginner');
+  const [mode, setMode] = useState<'text'|'image'>('text');
   const [showCitations, setShowCitations] = useState(false);
+  const [showLevelMenu, setShowLevelMenu] = useState(false);
+  const [showModeMenu, setShowModeMenu] = useState(false);
   const [loading, setLoading] = useState(false);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -124,7 +127,7 @@ function ChatHome() {
             ]);
           }
         }
-        const r = await ask({ data: { question, level, attachmentContext: extractedWithContent.map((a) => ({ name: a.name, content: a.content })) } });
+        const r = await ask({ data: { question, level, mode, attachmentContext: extractedWithContent.map((a) => ({ name: a.name, content: a.content })) } });
       setMessages((m) => [
         ...m,
         {
@@ -275,10 +278,76 @@ function ChatHome() {
               disabled={loading}
             />
             <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setLevel('beginner')} className={`px-3 py-2 rounded-lg text-xs ${level==='beginner' ? 'bg-primary/15 text-primary' : 'glass'}`}>Beginner</button>
-              <button type="button" onClick={() => setLevel('intermediate')} className={`px-3 py-2 rounded-lg text-xs ${level==='intermediate' ? 'bg-primary/15 text-primary' : 'glass'}`}>Intermediate</button>
-              <button type="button" onClick={() => setLevel('advanced')} className={`px-3 py-2 rounded-lg text-xs ${level==='advanced' ? 'bg-primary/15 text-primary' : 'glass'}`}>Advanced</button>
+              <div className="flex items-center gap-1.5 relative">
+                {/* Mode Selector */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowModeMenu(!showModeMenu)}
+                    onBlur={() => setTimeout(() => setShowModeMenu(false), 200)}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl glass text-[11px] font-medium transition hover:border-primary/50"
+                  >
+                    {mode === 'text' ? <Type className="w-3.5 h-3.5" /> : <LayoutDashboard className="w-3.5 h-3.5" />}
+                    <span className="capitalize">{mode === 'text' ? 'Text' : 'Diagram'}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {showModeMenu && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                        className="absolute bottom-full left-0 mb-2 w-32 glass rounded-xl border border-white/10 p-1 shadow-2xl z-[60]"
+                      >
+                        {[
+                          { id: 'text', label: 'Text Mode', icon: Type },
+                          { id: 'image', label: 'Diagrams', icon: LayoutDashboard },
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => { setMode(item.id as any); setShowModeMenu(false); }}
+                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] transition ${mode === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-white/10'}`}
+                          >
+                            <item.icon className="w-3.5 h-3.5" />
+                            {item.label}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Level Selector */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowLevelMenu(!showLevelMenu)}
+                    onBlur={() => setTimeout(() => setShowLevelMenu(false), 200)}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl glass text-[11px] font-medium transition hover:border-primary/50"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span className="capitalize">{level}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform ${showLevelMenu ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {showLevelMenu && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                        className="absolute bottom-full right-0 mb-2 w-32 glass rounded-xl border border-white/10 p-1 shadow-2xl z-[60]"
+                      >
+                        {['beginner', 'intermediate', 'advanced'].map((l) => (
+                          <button
+                            key={l}
+                            type="button"
+                            onClick={() => { setLevel(l as any); setShowLevelMenu(false); }}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-[11px] capitalize transition ${level === l ? 'bg-primary text-primary-foreground' : 'hover:bg-white/10'}`}
+                          >
+                            {l}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
               <input
                 ref={fileInputRef}
@@ -421,7 +490,14 @@ function MessageBubble({ msg, showCitations }: { msg: Msg; showCitations?: boole
                   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
                   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
                   em: ({ children }) => <em className="italic">{children}</em>,
-                  code: ({ children }) => <code className="rounded bg-black/20 px-1 py-0.5 text-[0.92em]">{children}</code>,
+                  code: ({ node, className, children, ...props }) => {
+                    const match = /language-(\w+)/.exec(className || '');
+                    const isMermaid = match && match[1] === 'mermaid';
+                    if (isMermaid) {
+                      return <Mermaid chart={String(children).replace(/\n$/, '')} />;
+                    }
+                    return <code className="rounded bg-black/20 px-1 py-0.5 text-[0.92em]" {...props}>{children}</code>;
+                  },
                   blockquote: ({ children }) => <blockquote className="border-l-2 border-primary/40 pl-3 italic text-muted-foreground">{children}</blockquote>,
                 }}
               >

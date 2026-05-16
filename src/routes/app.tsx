@@ -13,6 +13,9 @@ import {
   getAiSettings, updateAiSettings, askQuestion, getMyRole, ensureAdminBootstrap, getAnalytics,
   listUsers, setUserAdmin,
 } from "@/lib/rag.functions";
+import { Mermaid } from "@/components/Mermaid";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export const Route = createFileRoute("/app")({
   head: () => ({ meta: [{ title: "KnowledgeScope AI — Workspace" }] }),
@@ -95,7 +98,23 @@ function MessageBubble({ m, showCitations }: { m: any; showCitations?: boolean }
         {isUser ? <span className="text-xs font-bold">You</span> : <Sparkles className="w-4 h-4 text-primary-foreground" />}
       </div>
       <div className={`glass-card rounded-2xl px-4 py-3 max-w-[80%] ${m.rejected ? "border-warning/40" : ""}`}>
-        <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap">{m.content}</div>
+        <div className="prose prose-invert prose-sm max-w-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code: ({ node, className, children, ...props }) => {
+                const match = /language-(\w+)/.exec(className || '');
+                const isMermaid = match && match[1] === 'mermaid';
+                if (isMermaid) {
+                  return <Mermaid chart={String(children).replace(/\n$/, '')} />;
+                }
+                return <code className="rounded bg-black/20 px-1 py-0.5 text-[0.92em]" {...props}>{children}</code>;
+              },
+            }}
+          >
+            {m.content}
+          </ReactMarkdown>
+        </div>
         {m.confidence != null && !isUser && (
           <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
             {m.rejected ? <AlertCircle className="w-3 h-3 text-warning" /> : <CheckCircle2 className="w-3 h-3 text-success" />}

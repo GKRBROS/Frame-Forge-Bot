@@ -482,6 +482,7 @@ export const askQuestion = createServerFn({ method: "POST" })
       conversationId: z.string().uuid(),
       question: z.string().trim().min(1).max(2000),
       level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
+      mode: z.enum(["text", "image"]).optional(),
     }).parse(d),
   )
   .handler(async ({ context, data }) => {
@@ -699,7 +700,7 @@ export const askQuestion = createServerFn({ method: "POST" })
     const useWeb = webContextItems.length > 0;
 
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use clear, ${data.level === 'beginner' ? 'simple' : data.level === 'intermediate' ? 'concise' : 'detailed'} sentences and explain terms as needed.` : '';
-    const formatInstr = `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.`;
+    const formatInstr = `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.${data.mode === 'image' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
     const messages: ChatMessage[] = [
       { role: "system" as const, content: useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT },
       ...(levelInstr ? [{ role: "system" as const, content: levelInstr }] : []),
@@ -828,6 +829,7 @@ export const askPublic = createServerFn({ method: "POST" })
     z.object({
       question: z.string().trim().min(1).max(2000),
       level: z.enum(["beginner","intermediate","advanced"]).optional(),
+      mode: z.enum(["text", "image"]).optional(),
       attachmentContext: z.array(z.object({ name: z.string().max(120), content: z.string().max(100000) })).max(4).optional(),
     }).parse(d),
   )
@@ -1067,7 +1069,7 @@ export const askPublic = createServerFn({ method: "POST" })
     const attachmentInstr = hasAttachmentContext
       ? 'Uploaded attachments are authoritative context. If the answer appears in an attachment, answer from it directly and do not refuse just because KB retrieval is weak.'
       : '';
-    const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.`;
+    const formatInstr = `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.${data.mode === 'image' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
     
     const messages: ChatMessage[] = [
       { role: "system" as any, content: attachmentOnly ? SYSTEM_PROMPT_ATTACHMENTS : (isEducational ? "You are an expert tutor. Prioritize context, but answer from general knowledge if needed." : (useWeb ? SYSTEM_PROMPT_WITH_WEB : SYSTEM_PROMPT)) },

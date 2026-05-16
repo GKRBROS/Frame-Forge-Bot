@@ -206,4 +206,30 @@
     50%     { opacity: 1;   transform: scale(1); }
   }
   .animate-pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+
+  .mermaid-container svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .mermaid-container .node rect, 
+  .mermaid-container .node circle, 
+  .mermaid-container .node ellipse, 
+  .mermaid-container .node polygon, 
+  .mermaid-container .node path {
+    fill: oklch(0.25 0.035 220) !important;
+    stroke: var(--primary) !important;
+    stroke-width: 1px !important;
+  }
+  .mermaid-container .label text {
+    fill: var(--foreground) !important;
+    font-family: var(--font-sans) !important;
+  }
+  .mermaid-container .edgePath .path {
+    stroke: var(--primary) !important;
+    stroke-width: 1.5px !important;
+  }
+  .mermaid-container .marker {
+    fill: var(--primary) !important;
+    stroke: var(--primary) !important;
+  }
 }

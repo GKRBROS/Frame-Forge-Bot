@@ -15,6 +15,11 @@ export default defineConfig({
   vite: {
     ssr: {
       noExternal: true,
+      // Externalize problematic CJS packages so Node.js handles them natively
+      external: ["react", "react-dom", "use-sync-external-store", "react/jsx-runtime", "react/jsx-dev-runtime"],
+    },
+    optimizeDeps: {
+      include: ["react", "react-dom", "use-sync-external-store", "@tanstack/react-start"],
     },
   },
 });
