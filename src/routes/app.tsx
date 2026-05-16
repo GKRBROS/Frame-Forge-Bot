@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Sparkles, Database, Settings, Shield, BarChart3,
-  Upload, Trash2, LogOut, FileText, AlertCircle, CheckCircle2, Loader2,
+  Upload, Trash2, LogOut, FileText, AlertCircle, CheckCircle2, Loader2, Download
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -116,8 +116,35 @@ function MessageBubble({ m, showCitations }: { m: any; showCitations?: boolean }
           </ReactMarkdown>
         </div>
         {m.image_url && (
-          <div className="mt-4 rounded-xl overflow-hidden border border-white/10 shadow-lg">
-            <img src={m.image_url} alt="Generated result" className="w-full h-auto object-cover max-h-[500px]" />
+          <div className="mt-4 group relative rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-black/20">
+            <img 
+              src={m.image_url} 
+              alt="Generated result" 
+              className="w-full h-auto object-contain max-h-[700px] block" 
+            />
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch(m.image_url!);
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `diagram-${Date.now()}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  } catch (err) {
+                    window.open(m.image_url, '_blank');
+                  }
+                }}
+                className="p-2 rounded-lg bg-black/60 backdrop-blur-md border border-white/20 text-white hover:bg-primary transition shadow-xl"
+                title="Download image"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
         {m.confidence != null && !isUser && (

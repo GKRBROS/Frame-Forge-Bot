@@ -7,7 +7,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "@/hooks/useAuth";
 import { askPublic, listConversations, getMessages, createConversation, deleteConversation, extractPublicAttachment } from "@/lib/rag.functions";
-import { Sparkles, Send, Shield, Loader2, FileText, BookOpen, Paperclip, X, ChevronDown, Type, Image as ImageIcon, LayoutDashboard } from "lucide-react";
+import { Sparkles, Send, Shield, Loader2, FileText, BookOpen, Paperclip, X, ChevronDown, Type, Image as ImageIcon, LayoutDashboard, Download } from "lucide-react";
 import { Mermaid } from "@/components/Mermaid";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -507,8 +507,35 @@ function MessageBubble({ msg, showCitations }: { msg: Msg; showCitations?: boole
                 {msg.content}
               </ReactMarkdown>
               {msg.imageUrl && (
-                <div className="mt-4 rounded-xl overflow-hidden border border-white/10 shadow-lg">
-                  <img src={msg.imageUrl} alt="Generated result" className="w-full h-auto object-cover max-h-[500px]" />
+                <div className="mt-4 group relative rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-black/20">
+                  <img 
+                    src={msg.imageUrl} 
+                    alt="Generated result" 
+                    className="w-full h-auto object-contain max-h-[700px] block" 
+                  />
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const response = await fetch(msg.imageUrl!);
+                          const blob = await response.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = `diagram-${Date.now()}.png`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        } catch (err) {
+                          window.open(msg.imageUrl, '_blank');
+                        }
+                      }}
+                      className="p-2 rounded-lg bg-black/60 backdrop-blur-md border border-white/20 text-white hover:bg-primary transition shadow-xl"
+                      title="Download image"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
