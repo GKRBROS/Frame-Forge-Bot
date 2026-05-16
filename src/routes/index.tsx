@@ -67,7 +67,7 @@ function ChatHome() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [level, setLevel] = useState<'beginner'|'intermediate'|'advanced'>('beginner');
-  const [mode, setMode] = useState<'text'|'diagram'|'image'>('text');
+  const [mode, setMode] = useState<'text'|'image'>('text');
   const [showCitations, setShowCitations] = useState(false);
   const [showLevelMenu, setShowLevelMenu] = useState(false);
   const [showModeMenu, setShowModeMenu] = useState(false);
@@ -289,8 +289,8 @@ function ChatHome() {
                     onBlur={() => setTimeout(() => setShowModeMenu(false), 200)}
                     className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl glass text-[11px] font-medium transition hover:border-primary/50"
                   >
-                    {mode === 'text' ? <Type className="w-3.5 h-3.5" /> : mode === 'diagram' ? <LayoutDashboard className="w-3.5 h-3.5" /> : <ImageIcon className="w-3.5 h-3.5" />}
-                    <span className="capitalize">{mode === 'text' ? 'Text' : mode === 'diagram' ? 'Diagram' : 'Image'}</span>
+                    {mode === 'text' ? <Type className="w-3.5 h-3.5" /> : <LayoutDashboard className="w-3.5 h-3.5" />}
+                    <span className="capitalize">{mode === 'text' ? 'Text' : 'Diagram'}</span>
                     <ChevronDown className={`w-3 h-3 transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
                   </button>
                   <AnimatePresence>
@@ -301,8 +301,7 @@ function ChatHome() {
                       >
                         {[
                           { id: 'text', label: 'Text Mode', icon: Type },
-                          { id: 'diagram', label: 'Diagrams', icon: LayoutDashboard },
-                          { id: 'image', label: 'Image Gen', icon: ImageIcon },
+                          { id: 'image', label: 'Diagram', icon: LayoutDashboard },
                         ].map((item) => (
                           <button
                             key={item.id}
@@ -354,6 +353,7 @@ function ChatHome() {
               </div>
               <input
                 ref={fileInputRef}
+                id="fileInput"
                 type="file"
                 className="hidden"
                 multiple

@@ -482,7 +482,7 @@ export const askQuestion = createServerFn({ method: "POST" })
       conversationId: z.string().uuid(),
       question: z.string().trim().min(1).max(2000),
       level: z.enum(["beginner", "intermediate", "advanced"]).optional(),
-      mode: z.enum(["text", "diagram", "image"]).optional(),
+      mode: z.enum(["text", "image"]).optional(),
     }).parse(d),
   )
   .handler(async ({ context, data }) => {
@@ -701,8 +701,8 @@ export const askQuestion = createServerFn({ method: "POST" })
 
     const levelInstr = data.level ? `Answer for a ${data.level} audience. Use ${data.level === 'beginner' ? 'very simple' : data.level === 'intermediate' ? 'clear, concise' : 'detailed and technical'} language and explain all terms.` : '';
     const formatInstr = data.mode === 'image' 
-      ? 'You are generating an image. Provide a very brief, friendly sentence about the image you are creating. Do not use the standard structure.'
-      : `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.${data.mode === 'diagram' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
+      ? 'You are generating a visual diagram. Provide a very brief, friendly sentence about the visual you are creating. Do not use the standard structure.'
+      : `When composing the answer, structure it into sections when applicable: Definition, Explanation, Example, Key Points, Optional Notes. Use the citations [n] inline where you used KB excerpts.`;
     
     // NEW: Handle real image generation
     let generatedImageUrl: string | undefined;
@@ -715,8 +715,8 @@ export const askQuestion = createServerFn({ method: "POST" })
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "black-forest-labs/flux-1-schnell",
-            messages: [{ role: "user", content: data.question }],
+            model: "bytedance-seed/seedream-4.5",
+            messages: [{ role: "user", content: `Create a professional, educational diagram or visual infographic about: ${data.question}. The visual should be clear, well-structured, and use icons/labels to explain the concept.` }],
           }),
         });
         const imgData = await imgResp.json();
@@ -857,7 +857,7 @@ export const askPublic = createServerFn({ method: "POST" })
     z.object({
       question: z.string().trim().min(1).max(2000),
       level: z.enum(["beginner","intermediate","advanced"]).optional(),
-      mode: z.enum(["text", "diagram", "image"]).optional(),
+      mode: z.enum(["text", "image"]).optional(),
       attachmentContext: z.array(z.object({ name: z.string().max(120), content: z.string().max(100000) })).max(4).optional(),
     }).parse(d),
   )
@@ -1098,8 +1098,8 @@ export const askPublic = createServerFn({ method: "POST" })
       ? 'Uploaded attachments are authoritative context. If the answer appears in an attachment, answer from it directly and do not refuse just because KB retrieval is weak.'
       : '';
     const formatInstr = data.mode === 'image'
-      ? 'You are generating an image. Provide a very brief, friendly sentence about the image you are creating. Do not use the standard structure.'
-      : `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.${data.mode === 'diagram' ? ' ALWAYS include a Mermaid.js diagram (e.g., flowcharts, sequence diagrams, mindmaps) if it helps visualize the information. Wrap the diagram in a markdown code block with the language "mermaid".' : ''}`;
+      ? 'You are generating a visual diagram. Provide a very brief, friendly sentence about the visual you are creating. Do not use the standard structure.'
+      : `Structure your answer with: Definition, Explanation, Examples, Key Points. Use [n] to cite KB excerpts.`;
     
     // NEW: Handle real image generation
     let generatedImageUrl: string | undefined;
@@ -1112,8 +1112,8 @@ export const askPublic = createServerFn({ method: "POST" })
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "black-forest-labs/flux-1-schnell",
-            messages: [{ role: "user", content: data.question }],
+            model: "bytedance-seed/seedream-4.5",
+            messages: [{ role: "user", content: `Create a professional, educational diagram or visual infographic about: ${data.question}. The visual should be clear, well-structured, and use icons/labels to explain the concept.` }],
           }),
         });
         const imgData = await imgResp.json();
