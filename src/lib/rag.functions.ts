@@ -639,6 +639,10 @@ export const askQuestion = createServerFn({ method: "POST" })
     }
 
     const results = await hybridRetrieve();
+    console.log(`[RAG] Retrieval complete. Found ${results.length} results. Top score: ${results[0]?.finalScore ?? 0}`);
+    if (results.length === 0) {
+      console.log(`[RAG] DEBUG: No results found for user ${userId}. Query: "${data.question}"`);
+    }
     const isEducational = isEducationalQuery(data.question);
 
     // Confidence and low-confidence detection (do not auto-reject purely on threshold)
