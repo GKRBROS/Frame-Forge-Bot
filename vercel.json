@@ -5,18 +5,18 @@
       "includeFiles": "dist/server/**"
     }
   },
-  "rewrites": [
+  "routes": [
     {
-      "source": "/assets/(.*)",
-      "destination": "/dist/client/assets/$1"
+      "src": "/assets/(.*)",
+      "dest": "/dist/client/assets/$1"
     },
     {
-      "source": "/favicon.ico",
-      "destination": "/dist/client/favicon.ico"
+      "src": "/favicon.ico",
+      "dest": "/dist/client/favicon.ico"
     },
     {
-      "source": "/(.*)",
-      "destination": "/api/ssr"
+      "src": "/(.*)",
+      "dest": "/api/ssr"
     }
   ]
 }
