@@ -36,46 +36,83 @@ function main() {
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
   console.log('[patch-tanstack-start-server-core] updated package.json imports');
 
+  // Find the actual filenames during build time to avoid readdir at runtime
+  const projectRootForBuild = process.cwd();
+  const assetsDirForBuild = path.join(projectRootForBuild, 'dist', 'server', 'assets');
+  const assetMap = {};
+  
+  if (fs.existsSync(assetsDirForBuild)) {
+    const files = fs.readdirSync(assetsDirForBuild);
+    const prefixes = [
+      { key: 'router', prefix: 'router-' },
+      { key: 'start', prefix: 'start-' },
+      { key: 'pluginAdapters', prefix: '__23tanstack-start-plugin-adapters-' },
+      { key: 'manifest', prefixes: ['_tanstack-start-manifest_v-', 'tanstack-start-manifest-'] },
+    ];
+    
+    for (const p of prefixes) {
+      if (p.prefixes) {
+        for (const pref of p.prefixes) {
+          const match = files.find(f => f.startsWith(pref) && f.endsWith('.js'));
+          if (match) {
+            assetMap[p.key] = match;
+            break;
+          }
+        }
+      } else {
+        const match = files.find(f => f.startsWith(p.prefix) && f.endsWith('.js'));
+        if (match) {
+          assetMap[p.key] = match;
+        }
+      }
+    }
+  }
+  console.log('[patch-tanstack-start-server-core] detected assets:', assetMap);
+
   const loaderSource = `import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-function findFile(prefix) {
+const assetMap = ${JSON.stringify(assetMap)};
+
+function findFile(key) {
+  const prefix = assetMap[key];
+  if (!prefix) {
+    throw new Error(\`TanStack Start asset key "\${key}" not found in build-time map: \${JSON.stringify(assetMap)}\`);
+  }
+
   const packageDir = path.dirname(fileURLToPath(import.meta.url));
-  // Try multiple ways to find the project root
   const candidates = [
-    path.resolve(packageDir, '../../../../../'), // Standard node_modules/@tanstack/start-server-core/dist/esm
-    process.cwd(),                                 // Current working directory
-    path.resolve('/var/task'),                      // Vercel default
+    path.resolve(packageDir, '../../../../../'),
+    process.cwd(),
+    path.resolve('/var/task'),
   ];
 
   for (const root of candidates) {
     const assetsDir = path.resolve(root, 'dist', 'server', 'assets');
-    if (fs.existsSync(assetsDir)) {
-      const match = fs.readdirSync(assetsDir).find((file) => file.startsWith(prefix) && file.endsWith('.js'));
-      if (match) {
-        return pathToFileURL(path.join(assetsDir, match)).href;
-      }
+    const filePath = path.join(assetsDir, prefix);
+    if (fs.existsSync(filePath)) {
+      return pathToFileURL(filePath).href;
     }
   }
   
-  throw new Error(\`TanStack Start asset matching prefix "\${prefix}" not found in candidates: \${candidates.join(', ')}\`);
+  throw new Error(\`TanStack Start asset "\${prefix}" (key: \${key}) not found in candidates: \${candidates.join(', ')}\`);
 }
 
-async function loadModule(prefix) {
-  return import(findFile(prefix));
+async function loadModule(key) {
+  return import(findFile(key));
 }
 
 export async function loadRouterEntry() {
-  return await loadModule('router-');
+  return await loadModule('router');
 }
 
 export async function loadStartEntry() {
-  return await loadModule('start-');
+  return await loadModule('start');
 }
 
 export async function loadPluginAdapters() {
-  return await loadModule('__23tanstack-start-plugin-adapters-');
+  return await loadModule('pluginAdapters');
 }
 `;
 
@@ -102,7 +139,14 @@ export default mod;
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-function findFile(prefix) {
+const assetMap = ${JSON.stringify(assetMap)};
+
+function findFile(key) {
+  const prefix = assetMap[key];
+  if (!prefix) {
+    throw new Error(\`TanStack Start manifest asset key "\${key}" not found in build-time map\`);
+  }
+
   const packageDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     path.resolve(packageDir, '../../../../../'),
@@ -112,17 +156,15 @@ function findFile(prefix) {
 
   for (const root of candidates) {
     const assetsDir = path.resolve(root, 'dist', 'server', 'assets');
-    if (fs.existsSync(assetsDir)) {
-      const match = fs.readdirSync(assetsDir).find((file) => file.startsWith(prefix) && file.endsWith('.js'));
-      if (match) {
-        return pathToFileURL(path.join(assetsDir, match)).href;
-      }
+    const filePath = path.join(assetsDir, prefix);
+    if (fs.existsSync(filePath)) {
+      return pathToFileURL(filePath).href;
     }
   }
-  throw new Error(\`TanStack Start manifest asset matching prefix "\${prefix}" not found\`);
+  throw new Error(\`TanStack Start manifest asset "\${prefix}" not found in candidates: \${candidates.join(', ')}\`);
 }
 
-const fileUrl = findFile('_tanstack-start-manifest_v-');
+const fileUrl = findFile('manifest');
 const mod = await import(fileUrl);
 export const tsrStartManifest = mod.tsrStartManifest;
 export default mod;
