@@ -7,9 +7,8 @@
     "#tanstack-router-entry": "./dist/server/index.js"
   },
   "scripts": {
-    "postinstall": "node ./scripts/patch-tanstack-start-server-core.cjs",
     "dev": "vite dev",
-    "build": "vite build && node ./scripts/patch-tanstack-start-server-core.cjs",
+    "build": "vite build",
     "postbuild": "node ./scripts/postbuild.cjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
