@@ -264,7 +264,15 @@ function KnowledgeTab() {
       const userId = userData.user!.id;
       const results = await Promise.allSettled(
         files.map(async (file) => {
-          const path = `${userId}/${Date.now()}-${file.name}`;
+          // Normalize mathematical characters (NFKD) and strictly keep only basic alphanumeric, dot, dash, and underscores
+          const safeName = file.name
+            .normalize("NFKD")
+            .replace(/[^\x00-\x7F]/g, "") // Strip non-ASCII
+            .replace(/[^a-zA-Z0-9\.\-_]/g, "_") // Replace spaces, parentheses, etc. with underscores
+            .replace(/__+/g, "_") // Deduplicate multiple consecutive underscores
+            .trim();
+
+          const path = `${userId}/${Date.now()}-${safeName}`;
           const { error: upErr } = await supabase.storage.from("knowledge-documents").upload(path, file);
           if (upErr) throw upErr;
           await ingestF({ data: { filePath: path, title: file.name, mimeType: file.type || "application/octet-stream" } });

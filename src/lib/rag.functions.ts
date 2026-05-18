@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -898,6 +899,22 @@ export const askPublic = createServerFn({ method: "POST" })
     const allowInternet = settings?.allow_internet ?? false;
     const TOP_K = Math.max(15, Number(settings?.top_k ?? 15)); // ← INCREASED to 15
 
+    // Gracefully extract the authenticated user ID if a valid auth token is present
+    let userId: string | null = null;
+    try {
+      const request = getRequest();
+      const authHeader = request?.headers?.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.replace("Bearer ", "");
+        const { data: claimsData } = await supabaseAdmin.auth.getClaims(token);
+        if (claimsData?.claims?.sub) {
+          userId = claimsData.claims.sub;
+        }
+      }
+    } catch {
+      // Fallback to guest query
+    }
+
     if (!adminId) {
       return {
         content: "The knowledge base is not yet set up. Please ask the administrator to upload documents.",
@@ -1104,6 +1121,19 @@ export const askPublic = createServerFn({ method: "POST" })
     // Strict mode: reject ONLY when KB has zero results, no attachment, no web, and it's NOT educational.
     if (strict && !hasAttachmentContext && results.length === 0 && webContextItems.length === 0 && !isEducational) {
       console.debug('[rejection]', { question: data.question, reason: 'no-kb-results-no-web' });
+      await supabaseAdmin.from("query_logs").insert({
+        user_id: userId || null,
+        conversation_id: null,
+        question: data.question,
+        event_type: "question" as any,
+        event_label: (data.level ? `Level: ${data.level}` : "Public Question") as any,
+        confidence: 0,
+        rejected: true,
+        model,
+        tokens_in: 0,
+        tokens_out: 0,
+        latency_ms: Date.now() - start,
+      } as any);
       return {
         content: "Sorry, this is outside my knowledge scope.",
         citations: [], confidence: 0, rejected: true, latencyMs: Date.now() - start, model,
@@ -1192,6 +1222,19 @@ export const askPublic = createServerFn({ method: "POST" })
       }
     } catch (err: any) {
       const msg = err instanceof Error ? err.message : "AI provider failed";
+      await supabaseAdmin.from("query_logs").insert({
+        user_id: userId || null,
+        conversation_id: null,
+        question: data.question,
+        event_type: "question" as any,
+        event_label: (data.level ? `Level: ${data.level}` : "Public Question") as any,
+        confidence: 0,
+        rejected: true,
+        model,
+        tokens_in: 0,
+        tokens_out: 0,
+        latency_ms: Date.now() - start,
+      } as any);
       return {
         content: `⚠️ ${msg}`,
         citations: [],
@@ -1252,6 +1295,20 @@ export const askPublic = createServerFn({ method: "POST" })
     }));
     const webCitationsOffset = (webCitations ?? []).map((c) => ({ ...c, n: kbCitations.length + c.n }));
     const citations = [...kbCitations, ...webCitationsOffset];
+
+    await supabaseAdmin.from("query_logs").insert({
+      user_id: userId || null,
+      conversation_id: null,
+      question: data.question,
+      event_type: "question" as any,
+      event_label: (data.level ? `Level: ${data.level}` : "Public Question") as any,
+      confidence,
+      rejected: wasRejected,
+      model: aiResult.model,
+      tokens_in: aiResult.tokensIn ?? 0,
+      tokens_out: aiResult.tokensOut ?? 0,
+      latency_ms: Date.now() - start,
+    } as any);
 
     return {
       content: aiResult.content, citations, confidence,
