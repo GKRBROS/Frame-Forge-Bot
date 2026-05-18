@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "react-toastify";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "@/hooks/useAuth";
@@ -122,6 +123,7 @@ function ChatHome() {
         // Surface any extraction errors to the user
         for (const e of (extracted ?? [])) {
           if ((!e?.content || e.content.trim().length === 0) && e?.error) {
+            toast.error(`Attachment “${e.name}” extraction failed: ${e.error}`);
             setMessages((m) => [
               ...m,
               { role: "assistant", content: `⚠️ Attachment "${e.name}" extraction failed: ${e.error}`, rejected: true },
@@ -140,10 +142,12 @@ function ChatHome() {
           rejected: r.rejected,
         },
       ]);
-    } catch (e) {
+    } catch (e: any) {
+      const errMsg = e instanceof Error ? e.message : "Something went wrong";
+      toast.error(errMsg);
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: `⚠️ ${e instanceof Error ? e.message : "Something went wrong"}`, rejected: true },
+        { role: "assistant", content: `⚠️ ${errMsg}`, rejected: true },
       ]);
     } finally {
       setAttachments([]);
@@ -424,9 +428,11 @@ function ChatHome() {
                     setActiveConv(nw.id);
                     setMessages([]);
                     convs.refetch?.();
+                    toast.success("Chat history cleared!");
                   }
-                } catch (err) {
+                } catch (err: any) {
                   console.error('clear failed', err);
+                  toast.error(err.message || "Failed to clear chat");
                 }
               }}
               className="text-xs text-muted-foreground hover:text-destructive"

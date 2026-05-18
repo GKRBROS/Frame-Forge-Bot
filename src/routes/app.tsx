@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { toast } from "react-toastify";
 import {
   Sparkles, Database, Settings, Shield, BarChart3,
   Upload, Trash2, LogOut, FileText, AlertCircle, CheckCircle2, Loader2, Download
@@ -194,15 +195,40 @@ function KnowledgeTab() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
+  async function handleToggle(id: string, enabled: boolean, docTitle: string) {
+    try {
+      await tog({ data: { id, enabled } });
+      toast.success(enabled ? `Enabled “${docTitle}”` : `Disabled “${docTitle}”`);
+      qc.invalidateQueries({ queryKey: ["docs"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to toggle document status");
+    }
+  }
+
+  async function handleDelete(id: string, docTitle: string) {
+    try {
+      await del({ data: { id } });
+      toast.success(`Deleted document “${docTitle}”`);
+      qc.invalidateQueries({ queryKey: ["docs"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete document");
+    }
+  }
+
   async function submitText(e: React.FormEvent) {
     e.preventDefault();
     setErr(""); setOk(""); setBusy(true);
     try {
       await ingestT({ data: { title, content: text } });
       setTitle(""); setText("");
-      setOk("Indexed successfully");
+      toast.success("Document text indexed successfully!");
       qc.invalidateQueries({ queryKey: ["docs"] });
-    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+    } catch (e: any) { 
+      setErr(e.message); 
+      toast.error(e.message);
+    } finally { 
+      setBusy(false); 
+    }
   }
 
   async function submitUrl(e: React.FormEvent) {
@@ -211,9 +237,14 @@ function KnowledgeTab() {
     try {
       const r = await ingestU({ data: { url } });
       setUrl("");
-      setOk(`Scraped “${r.title}” — ${r.chunkCount} chunks`);
+      toast.success(`Scraped “${r.title}” — ${r.chunkCount} chunks successfully!`);
       qc.invalidateQueries({ queryKey: ["docs"] });
-    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+    } catch (e: any) { 
+      setErr(e.message); 
+      toast.error(e.message);
+    } finally { 
+      setBusy(false); 
+    }
   }
 
   async function uploadFiles(files: File[]) {
@@ -237,26 +268,25 @@ function KnowledgeTab() {
       const failed = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
 
       if (succeeded.length > 0) {
-        setOk(
-          succeeded.length === 1
-            ? `Indexed ${succeeded[0].value}`
-            : `Indexed ${succeeded.length} files: ${succeeded.map((result) => result.value).join(", ")}`,
-        );
+        const msg = succeeded.length === 1
+          ? `Indexed ${succeeded[0].value}`
+          : `Indexed ${succeeded.length} files: ${succeeded.map((result) => result.value).join(", ")}`;
+        toast.success(msg);
       }
       if (failed.length > 0) {
-        setErr(
-          failed.length === 1
-            ? failed[0].reason instanceof Error
-              ? failed[0].reason.message
-              : String(failed[0].reason)
-            : `${failed.length} files failed to upload or index`,
-        );
+        const msg = failed.length === 1
+          ? failed[0].reason instanceof Error
+            ? failed[0].reason.message
+            : String(failed[0].reason)
+          : `${failed.length} files failed to upload or index`;
+        toast.error(msg);
       }
       if (succeeded.length > 0) {
         qc.invalidateQueries({ queryKey: ["docs"] });
       }
     } catch (e: any) {
       setErr(e.message);
+      toast.error(e.message);
     } finally {
       setBusy(false);
     }
@@ -334,9 +364,9 @@ function KnowledgeTab() {
                 d.status === "failed" ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground"}`}>
                 {d.status}
               </span>
-              <button onClick={() => tog({ data: { id: d.id, enabled: !d.enabled } }).then(() => qc.invalidateQueries({ queryKey: ["docs"] }))}
+              <button onClick={() => handleToggle(d.id, !d.enabled, d.title)}
                 className="text-xs px-2 py-1 rounded glass">{d.enabled ? "Enabled" : "Disabled"}</button>
-              <button onClick={() => del({ data: { id: d.id } }).then(() => qc.invalidateQueries({ queryKey: ["docs"] }))}
+              <button onClick={() => handleDelete(d.id, d.title)}
                 className="text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}
@@ -532,8 +562,24 @@ function AdminTab() {
   const users = useQuery({ queryKey: ["users"], queryFn: () => lUsers() });
   const upd = useMutation({
     mutationFn: (patch: any) => setS({ data: patch }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["aisettings"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["aisettings"] });
+      toast.success("AI Configuration updated successfully!");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update configuration");
+    }
   });
+
+  async function handleAdminRoleToggle(targetUserId: string, display_name: string, makeAdmin: boolean) {
+    try {
+      await setAdmin({ data: { targetUserId, makeAdmin } });
+      toast.success(makeAdmin ? `Granted administrator role to “${display_name}”` : `Revoked administrator role from “${display_name}”`);
+      users.refetch();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to modify user role");
+    }
+  }
 
   if (settings.isLoading || !settings.data) return <div className="p-8"><Loader2 className="animate-spin" /></div>;
   const s = settings.data;
@@ -619,7 +665,7 @@ function AdminTab() {
                   <div className="text-sm font-medium">{u.display_name ?? u.user_id.slice(0, 8)}</div>
                   <div className="text-xs text-muted-foreground">{u.roles.join(", ")}</div>
                 </div>
-                <button onClick={() => setAdmin({ data: { targetUserId: u.user_id, makeAdmin: !u.roles.includes("admin") } }).then(() => users.refetch())}
+                <button onClick={() => handleAdminRoleToggle(u.user_id, u.display_name ?? u.user_id.slice(0, 8), !u.roles.includes("admin"))}
                   className="text-xs px-3 py-1.5 rounded-lg glass hover:border-primary">
                   {u.roles.includes("admin") ? "Revoke admin" : "Make admin"}
                 </button>

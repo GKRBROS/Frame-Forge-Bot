@@ -9,6 +9,8 @@ import {
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
+import toastifyCss from "react-toastify/dist/ReactToastify.css?url";
+import { ToastContainer } from "react-toastify";
 
 function NotFoundComponent() {
   return (
@@ -90,6 +92,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      {
+        rel: "stylesheet",
+        href: toastifyCss,
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -124,6 +130,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
+      <ToastContainer position="top-right" autoClose={4000} theme="dark" />
     </QueryClientProvider>
   );
 }

@@ -6,6 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureAdminAccount } from "@/lib/rag.functions";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { toast } from "react-toastify";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Admin sign-in — KnowledgeScope AI" }] }),
@@ -29,9 +30,12 @@ function AdminLogin() {
       await ensure({ data: { email: email.trim().toLowerCase(), password } });
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (error) throw error;
+      toast.success("Successfully signed in!");
       nav({ to: "/app" });
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Sign-in failed");
+    } catch (e: any) {
+      const msg = e instanceof Error ? e.message : "Sign-in failed";
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
