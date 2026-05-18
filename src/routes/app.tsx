@@ -7,14 +7,14 @@ import {
   Sparkles, Database, Settings, Shield, BarChart3,
   Upload, Trash2, LogOut, FileText, AlertCircle, CheckCircle2, Loader2, Download,
   MessageSquare, Terminal, HelpCircle, Calendar, Cpu, Coins, ChevronDown, ChevronUp,
-  Copy, Check, Filter, XCircle, Search, Clock, AlertTriangle
+  Copy, Check, Filter, XCircle, Search, Clock, AlertTriangle, Folder, Plus, Edit
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import {
   listDocuments, ingestText, ingestUploadedFile, ingestUrl, deleteDocument, toggleDocument,
   getAiSettings, updateAiSettings, askQuestion, getMyRole, ensureAdminBootstrap, getAnalytics,
-  listUsers, setUserAdmin,
+  listUsers, setUserAdmin, updateDocumentCategory, toggleCategory, renameCategory,
 } from "@/lib/rag.functions";
 import { Mermaid } from "@/components/Mermaid";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -194,6 +194,10 @@ function KnowledgeTab() {
   const del = useServerFn(deleteDocument);
   const tog = useServerFn(toggleDocument);
 
+  const updateDocCategory = useServerFn(updateDocumentCategory);
+  const togCategory = useServerFn(toggleCategory);
+  const renCategory = useServerFn(renameCategory);
+
   const docs = useQuery({ queryKey: ["docs"], queryFn: () => list() });
   const [mode, setMode] = useState<"upload" | "paste" | "url">("paste");
   const [title, setTitle] = useState("");
@@ -202,6 +206,34 @@ function KnowledgeTab() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+
+  const [selectedCategory, setSelectedCategory] = useState<string>("default");
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState("");
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [editCategoryInput, setEditCategoryInput] = useState("");
+
+  const categories = useMemo(() => {
+    const list = docs.data ?? [];
+    const set = new Set<string>();
+    list.forEach((d: any) => {
+      if (d.collection && d.collection !== "default") {
+        set.add(d.collection);
+      }
+    });
+    return Array.from(set).sort();
+  }, [docs.data]);
+
+  const groupedDocs = useMemo(() => {
+    const list = docs.data ?? [];
+    const groups: Record<string, any[]> = {};
+    list.forEach((d: any) => {
+      const cat = d.collection || "default";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(d);
+    });
+    return groups;
+  }, [docs.data]);
 
   async function handleToggle(id: string, enabled: boolean, docTitle: string) {
     try {
@@ -223,11 +255,68 @@ function KnowledgeTab() {
     }
   }
 
+  async function handleToggleCategory(category: string, enabled: boolean) {
+    setBusy(true);
+    try {
+      await togCategory({ data: { collection: category, enabled } });
+      toast.success(enabled ? `Enabled all items in "${category === "default" ? "General" : category}"` : `Disabled all items in "${category === "default" ? "General" : category}"`);
+      qc.invalidateQueries({ queryKey: ["docs"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to toggle category");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRenameCategory(oldCat: string) {
+    if (!editCategoryInput.trim()) return;
+    setBusy(true);
+    try {
+      await renCategory({ data: { oldCollection: oldCat, newCollection: editCategoryInput.trim() } });
+      toast.success(`Renamed category "${oldCat === "default" ? "General" : oldCat}" to "${editCategoryInput.trim()}"`);
+      setEditingCategory(null);
+      setEditCategoryInput("");
+      qc.invalidateQueries({ queryKey: ["docs"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to rename category");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteCategory(category: string) {
+    const categoryDocs = groupedDocs[category] ?? [];
+    if (!confirm(`Are you sure you want to delete the category "${category === "default" ? "General" : category}" and all its ${categoryDocs.length} items?`)) return;
+    setBusy(true);
+    try {
+      await Promise.all(categoryDocs.map((d: any) => del({ data: { id: d.id } })));
+      toast.success(`Deleted category and all its items successfully!`);
+      qc.invalidateQueries({ queryKey: ["docs"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete category");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleMoveDocCategory(docId: string, newCat: string) {
+    setBusy(true);
+    try {
+      await updateDocCategory({ data: { id: docId, collection: newCat === "default" ? null : newCat } });
+      toast.success("Moved item to category successfully!");
+      qc.invalidateQueries({ queryKey: ["docs"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to move item");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitText(e: React.FormEvent) {
     e.preventDefault();
     setErr(""); setOk(""); setBusy(true);
     try {
-      await ingestT({ data: { title, content: text } });
+      await ingestT({ data: { title, content: text, collection: selectedCategory } });
       setTitle(""); setText("");
       toast.success("Document text indexed successfully!");
       qc.invalidateQueries({ queryKey: ["docs"] });
@@ -243,7 +332,7 @@ function KnowledgeTab() {
     e.preventDefault();
     setErr(""); setOk(""); setBusy(true);
     try {
-      const r = await ingestU({ data: { url } });
+      const r = await ingestU({ data: { url, collection: selectedCategory } });
       setUrl("");
       toast.success(`Scraped “${r.title}” — ${r.chunkCount} chunks successfully!`);
       qc.invalidateQueries({ queryKey: ["docs"] });
@@ -275,7 +364,7 @@ function KnowledgeTab() {
           const path = `${userId}/${Date.now()}-${safeName}`;
           const { error: upErr } = await supabase.storage.from("knowledge-documents").upload(path, file);
           if (upErr) throw upErr;
-          await ingestF({ data: { filePath: path, title: file.name, mimeType: file.type || "application/octet-stream" } });
+          await ingestF({ data: { filePath: path, title: file.name, mimeType: file.type || "application/octet-stream", collection: selectedCategory } });
           return file.name;
         }),
       );
@@ -292,8 +381,6 @@ function KnowledgeTab() {
       if (failed.length > 0) {
         const msg = failed.length === 1
           ? failed[0].reason instanceof Error
-            ? failed[0].reason.message
-            : String(failed[0].reason)
           : `${failed.length} files failed to upload or index`;
         toast.error(msg);
       }
@@ -320,6 +407,74 @@ function KnowledgeTab() {
             <button onClick={() => setMode("upload")} className={`px-4 py-2 rounded-lg text-sm ${mode === "upload" ? "bg-primary/15 text-primary border border-primary/30" : "glass"}`}>Upload file</button>
             <button onClick={() => setMode("url")} className={`px-4 py-2 rounded-lg text-sm ${mode === "url" ? "bg-primary/15 text-primary border border-primary/30" : "glass"}`}>Scrape URL</button>
           </div>
+
+          {/* Category Selector */}
+          <div className="flex items-center gap-3 mb-6 p-4 rounded-xl bg-input/50 border border-border/50">
+            <Folder className="w-5 h-5 text-primary flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Assign to Category</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {!isCreatingCategory ? (
+                  <>
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => {
+                        if (e.target.value === "new") {
+                          setIsCreatingCategory(true);
+                        } else {
+                          setSelectedCategory(e.target.value);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-background border border-border text-sm outline-none focus:border-primary min-w-[200px]"
+                    >
+                      <option value="default">General (default)</option>
+                      {categories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="new" className="text-primary font-medium font-semibold">+ Create New Category...</option>
+                    </select>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 flex-1 max-w-sm">
+                    <input
+                      type="text"
+                      value={newCategoryInput}
+                      onChange={(e) => setNewCategoryInput(e.target.value)}
+                      placeholder="Category name (e.g. Computer)"
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-background border border-border text-sm outline-none focus:border-primary"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newCategoryInput.trim()) {
+                          setSelectedCategory(newCategoryInput.trim());
+                        } else {
+                          setSelectedCategory("default");
+                        }
+                        setIsCreatingCategory(false);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingCategory(false);
+                        setNewCategoryInput("");
+                        setSelectedCategory("default");
+                      }}
+                      className="px-3 py-1.5 rounded-lg glass text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {mode === "paste" && (
             <form onSubmit={submitText} className="space-y-3">
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Document title" required
@@ -363,30 +518,166 @@ function KnowledgeTab() {
           {ok && <div className="text-sm text-success mt-3">{ok}</div>}
         </div>
 
-        <div className="space-y-2">
-          {(docs.data ?? []).map((d: any) => (
-            <div key={d.id} className="glass-card rounded-xl p-4 flex items-center gap-4">
-              <FileText className="w-5 h-5 text-muted-foreground" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{d.title}</div>
-                <div className="text-xs text-muted-foreground">
-                  {d.source_type ?? "text"} · {d.chunk_count} chunks · {d.status}
-                  {d.error_message && <span className="text-destructive"> — {d.error_message}</span>}
+        <div className="space-y-6">
+          {Object.entries(groupedDocs).map(([catKey, items]) => {
+            const isEditing = editingCategory === catKey;
+            const catName = catKey === "default" ? "General" : catKey;
+            const allEnabled = items.every((d) => d.enabled);
+
+            return (
+              <div key={catKey} className="glass-card rounded-2xl border border-border/80 shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
+                {/* Category Header */}
+                <div className="bg-muted/30 px-6 py-4 flex items-center justify-between border-b border-border/50 flex-wrap gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Folder className={`w-5 h-5 ${allEnabled ? "text-primary" : "text-muted-foreground"}`} />
+                    {isEditing ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editCategoryInput}
+                          onChange={(e) => setEditCategoryInput(e.target.value)}
+                          className="px-2 py-1 rounded bg-background border border-border text-sm outline-none focus:border-primary"
+                          required
+                        />
+                        <button
+                          onClick={() => handleRenameCategory(catKey)}
+                          className="px-2 py-1 rounded bg-primary text-primary-foreground text-xs font-semibold"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingCategory(null)}
+                          className="px-2 py-1 rounded glass text-xs"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3 className="font-display font-bold text-base truncate">{catName}</h3>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-input/80 text-muted-foreground font-medium">
+                          {items.length} {items.length === 1 ? "item" : "items"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Category Toggle: Enable / Disable Category */}
+                    <button
+                      onClick={() => handleToggleCategory(catKey, !allEnabled)}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+                        allEnabled
+                          ? "bg-success/15 text-success border border-success/30 hover:bg-success/20"
+                          : "bg-muted text-muted-foreground border border-border hover:bg-muted/80"
+                      }`}
+                    >
+                      {allEnabled ? "Category Enabled" : "Category Disabled"}
+                    </button>
+
+                    {/* Rename Category button */}
+                    {catKey !== "default" && !isEditing && (
+                      <button
+                        onClick={() => {
+                          setEditingCategory(catKey);
+                          setEditCategoryInput(catKey);
+                        }}
+                        className="text-muted-foreground hover:text-primary transition-colors p-1"
+                        title="Rename Category"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    {/* Delete Category button */}
+                    <button
+                      onClick={() => handleDeleteCategory(catKey)}
+                      className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                      title="Delete Category and all its files"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Category Body / Document List */}
+                <div className="divide-y divide-border/40">
+                  {items.map((d: any) => (
+                    <div key={d.id} className={`p-4 flex items-center gap-4 transition-colors ${d.enabled ? "bg-transparent" : "bg-muted/10 opacity-75"}`}>
+                      <FileText className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate text-sm">{d.title}</div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                          <span>{d.source_type ?? "text"}</span>
+                          <span>·</span>
+                          <span>{d.chunk_count} chunks</span>
+                          {d.error_message && (
+                            <>
+                              <span>·</span>
+                              <span className="text-destructive font-medium truncate">{d.error_message}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        {/* Status Badge */}
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider ${
+                          d.status === "ready" ? "bg-success/15 text-success" :
+                          d.status === "processing" ? "bg-warning/15 text-warning animate-pulse" :
+                          d.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>
+                          {d.status}
+                        </span>
+
+                        {/* Move Category Selector Dropdown */}
+                        <select
+                          value={d.collection || "default"}
+                          onChange={(e) => handleMoveDocCategory(d.id, e.target.value)}
+                          className="px-2 py-1 rounded bg-input border border-border/60 text-xs outline-none focus:border-primary max-w-[120px]"
+                          title="Move to another category"
+                        >
+                          <option value="default">General</option>
+                          {categories.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                          {d.collection && d.collection !== "default" && !categories.includes(d.collection) && (
+                            <option value={d.collection}>{d.collection}</option>
+                          )}
+                        </select>
+
+                        {/* Individual Toggle */}
+                        <button
+                          onClick={() => handleToggle(d.id, !d.enabled, d.title)}
+                          className={`text-xs px-2 py-1 rounded font-medium border transition-colors ${
+                            d.enabled
+                              ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
+                              : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+                          }`}
+                        >
+                          {d.enabled ? "Enabled" : "Disabled"}
+                        </button>
+
+                        {/* Individual Delete */}
+                        <button
+                          onClick={() => handleDelete(d.id, d.title)}
+                          className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <span className={`text-xs px-2 py-1 rounded-full ${
-                d.status === "ready" ? "bg-success/20 text-success" :
-                d.status === "processing" ? "bg-warning/20 text-warning" :
-                d.status === "failed" ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground"}`}>
-                {d.status}
-              </span>
-              <button onClick={() => handleToggle(d.id, !d.enabled, d.title)}
-                className="text-xs px-2 py-1 rounded glass">{d.enabled ? "Enabled" : "Disabled"}</button>
-              <button onClick={() => handleDelete(d.id, d.title)}
-                className="text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+            );
+          })}
+
+          {docs.data?.length === 0 && (
+            <div className="text-sm text-muted-foreground text-center py-16 glass-card rounded-2xl">
+              <Folder className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+              <div>No documents inside the knowledge base yet.</div>
             </div>
-          ))}
-          {docs.data?.length === 0 && <div className="text-sm text-muted-foreground text-center py-12">No documents yet.</div>}
+          )}
         </div>
       </div>
     </div>
