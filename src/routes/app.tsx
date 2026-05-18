@@ -212,6 +212,7 @@ function KnowledgeTab() {
   const [newCategoryInput, setNewCategoryInput] = useState("");
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editCategoryInput, setEditCategoryInput] = useState("");
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const categories = useMemo(() => {
     const list = docs.data ?? [];
@@ -523,13 +524,38 @@ function KnowledgeTab() {
             const isEditing = editingCategory === catKey;
             const catName = catKey === "default" ? "General" : catKey;
             const allEnabled = items.every((d) => d.enabled);
+            const isCollapsed = collapsedCategories[catKey] ?? false;
+
+            const toggleCollapse = () => {
+              setCollapsedCategories((prev) => ({
+                ...prev,
+                [catKey]: !isCollapsed,
+              }));
+            };
 
             return (
               <div key={catKey} className="glass-card rounded-2xl border border-border/80 shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
                 {/* Category Header */}
                 <div className="bg-muted/30 px-6 py-4 flex items-center justify-between border-b border-border/50 flex-wrap gap-4">
                   <div className="flex items-center gap-3 min-w-0">
-                    <Folder className={`w-5 h-5 ${allEnabled ? "text-primary" : "text-muted-foreground"}`} />
+                    {/* Accordion toggle button */}
+                    <button
+                      onClick={toggleCollapse}
+                      className="p-1.5 rounded hover:bg-input/60 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                      title={isCollapsed ? "Show files" : "Hide files"}
+                    >
+                      {isCollapsed ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronUp className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    <Folder
+                      className={`w-5 h-5 ${allEnabled ? "text-primary" : "text-muted-foreground"} cursor-pointer flex-shrink-0`}
+                      onClick={toggleCollapse}
+                    />
+
                     {isEditing ? (
                       <div className="flex items-center gap-2">
                         <input
@@ -553,7 +579,7 @@ function KnowledgeTab() {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 cursor-pointer select-none" onClick={toggleCollapse}>
                         <h3 className="font-display font-bold text-base truncate">{catName}</h3>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-input/80 text-muted-foreground font-medium">
                           {items.length} {items.length === 1 ? "item" : "items"}
@@ -601,73 +627,77 @@ function KnowledgeTab() {
                 </div>
 
                 {/* Category Body / Document List */}
-                <div className="divide-y divide-border/40">
-                  {items.map((d: any) => (
-                    <div key={d.id} className={`p-4 flex items-center gap-4 transition-colors ${d.enabled ? "bg-transparent" : "bg-muted/10 opacity-75"}`}>
-                      <FileText className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate text-sm">{d.title}</div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                          <span>{d.source_type ?? "text"}</span>
-                          <span>·</span>
-                          <span>{d.chunk_count} chunks</span>
-                          {d.error_message && (
-                            <>
+                {!isCollapsed && (
+                  <div className="divide-y divide-border/40">
+                    {items.map((d: any) => (
+                      <div key={d.id} className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 transition-colors ${d.enabled ? "bg-transparent" : "bg-muted/10 opacity-75"}`}>
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <FileText className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-medium truncate text-sm">{d.title}</div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                              <span>{d.source_type ?? "text"}</span>
                               <span>·</span>
-                              <span className="text-destructive font-medium truncate">{d.error_message}</span>
-                            </>
-                          )}
+                              <span>{d.chunk_count} chunks</span>
+                              {d.error_message && (
+                                <>
+                                  <span>·</span>
+                                  <span className="text-destructive font-medium truncate">{d.error_message}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
+                          {/* Status Badge */}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider ${
+                            d.status === "ready" ? "bg-success/15 text-success" :
+                            d.status === "processing" ? "bg-warning/15 text-warning animate-pulse" :
+                            d.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>
+                            {d.status}
+                          </span>
+
+                          {/* Move Category Selector Dropdown */}
+                          <select
+                            value={d.collection || "default"}
+                            onChange={(e) => handleMoveDocCategory(d.id, e.target.value)}
+                            className="px-2 py-1 rounded bg-input border border-border/60 text-xs outline-none focus:border-primary max-w-[120px]"
+                            title="Move to another category"
+                          >
+                            <option value="default">General</option>
+                            {categories.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                            {d.collection && d.collection !== "default" && !categories.includes(d.collection) && (
+                              <option value={d.collection}>{d.collection}</option>
+                            )}
+                          </select>
+
+                          {/* Individual Toggle */}
+                          <button
+                            onClick={() => handleToggle(d.id, !d.enabled, d.title)}
+                            className={`text-xs px-2 py-1 rounded font-medium border transition-colors ${
+                              d.enabled
+                                ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
+                                : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+                            }`}
+                          >
+                            {d.enabled ? "Enabled" : "Disabled"}
+                          </button>
+
+                          {/* Individual Delete */}
+                          <button
+                            onClick={() => handleDelete(d.id, d.title)}
+                            className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        {/* Status Badge */}
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider ${
-                          d.status === "ready" ? "bg-success/15 text-success" :
-                          d.status === "processing" ? "bg-warning/15 text-warning animate-pulse" :
-                          d.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>
-                          {d.status}
-                        </span>
-
-                        {/* Move Category Selector Dropdown */}
-                        <select
-                          value={d.collection || "default"}
-                          onChange={(e) => handleMoveDocCategory(d.id, e.target.value)}
-                          className="px-2 py-1 rounded bg-input border border-border/60 text-xs outline-none focus:border-primary max-w-[120px]"
-                          title="Move to another category"
-                        >
-                          <option value="default">General</option>
-                          {categories.map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                          {d.collection && d.collection !== "default" && !categories.includes(d.collection) && (
-                            <option value={d.collection}>{d.collection}</option>
-                          )}
-                        </select>
-
-                        {/* Individual Toggle */}
-                        <button
-                          onClick={() => handleToggle(d.id, !d.enabled, d.title)}
-                          className={`text-xs px-2 py-1 rounded font-medium border transition-colors ${
-                            d.enabled
-                              ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
-                              : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
-                          }`}
-                        >
-                          {d.enabled ? "Enabled" : "Disabled"}
-                        </button>
-
-                        {/* Individual Delete */}
-                        <button
-                          onClick={() => handleDelete(d.id, d.title)}
-                          className="text-muted-foreground hover:text-destructive transition-colors p-1"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
