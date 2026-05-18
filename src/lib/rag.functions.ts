@@ -389,6 +389,18 @@ export const deleteConversation = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ context, data }) => {
     const { supabase } = context;
+    // Clear associated child records to prevent foreign key constraint violations
+    try {
+      await supabase.from("messages").delete().eq("conversation_id", data.id);
+    } catch (e) {
+      console.warn("Could not delete child messages:", e);
+    }
+    try {
+      await supabase.from("query_logs").update({ conversation_id: null }).eq("conversation_id", data.id);
+    } catch (e) {
+      console.warn("Could not nullify query_logs conversation foreign keys:", e);
+    }
+
     const { error } = await supabase.from("conversations").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };

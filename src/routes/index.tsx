@@ -419,6 +419,11 @@ function ChatHome() {
             <button
               type="button"
               onClick={async () => {
+                if (!user) {
+                  setMessages([]);
+                  toast.success("Chat history cleared!");
+                  return;
+                }
                 if (!activeConv) return;
                 if (!confirm('Clear this chat? This will delete the conversation and start a new one.')) return;
                 try {

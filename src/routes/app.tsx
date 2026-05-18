@@ -67,7 +67,7 @@ function AppShell() {
   return (
     <div className="min-h-screen flex">
       <aside className="w-64 glass border-r border-border p-4 flex flex-col gap-2">
-        <Link to="/" className="flex items-center gap-2 font-display text-lg font-bold mb-6 px-2">
+        <Link to="/app" onClick={() => setTab("knowledge")} className="flex items-center gap-2 font-display text-lg font-bold mb-6 px-2">
           <Sparkles className="w-5 h-5 text-primary" />
           <span className="text-gradient">KnowledgeScope</span>
         </Link>
@@ -432,6 +432,9 @@ function KnowledgeTab() {
                       {categories.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
+                      {selectedCategory && selectedCategory !== "default" && !categories.includes(selectedCategory) && (
+                        <option value={selectedCategory}>{selectedCategory}</option>
+                      )}
                       <option value="new" className="text-primary font-medium font-semibold">+ Create New Category...</option>
                     </select>
                   </>
@@ -717,7 +720,12 @@ function KnowledgeTab() {
 // ============ ANALYTICS ============
 function AnalyticsTab() {
   const fn = useServerFn(getAnalytics);
-  const a = useQuery({ queryKey: ["analytics"], queryFn: () => fn() });
+  const a = useQuery({
+    queryKey: ["analytics"],
+    queryFn: () => fn(),
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
   const [logSearch, setLogSearch] = useState("");
   const [logFrom, setLogFrom] = useState("");
   const [logTo, setLogTo] = useState("");
@@ -1035,7 +1043,12 @@ function SettingsTab() {
 // ============ LOGS ============
 function LogsTab() {
   const fn = useServerFn(getAnalytics);
-  const a = useQuery({ queryKey: ["analytics"], queryFn: () => fn() });
+  const a = useQuery({
+    queryKey: ["analytics"],
+    queryFn: () => fn(),
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
   const [logSearch, setLogSearch] = useState("");
   const [logFrom, setLogFrom] = useState("");
   const [logTo, setLogTo] = useState("");
