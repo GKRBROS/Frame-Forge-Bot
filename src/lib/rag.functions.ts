@@ -1310,19 +1310,19 @@ export const ensureAdminAccount = createServerFn({ method: "POST" })
     if (!rawEnvEmail) throw new Error("ADMIN_USERID environment variable is not set.");
     const providedEmail = String(data.email ?? "").toLowerCase().trim();
     const providedPassword = String(data.password ?? "");
-    if (providedEmail !== ADMIN_EMAIL || (ADMIN_PASSWORD && providedPassword !== ADMIN_PASSWORD)) {
+    if (providedEmail !== rawEnvEmail || (rawEnvPassword && providedPassword !== rawEnvPassword)) {
       throw new Error("Only the designated admin credentials (from .env) can be used to provision the admin account.");
     }
 
     // Check if user exists
     const { data: existing } = await supabaseAdmin.auth.admin.listUsers();
-    const found = existing?.users?.find((u) => u.email?.toLowerCase() === ADMIN_EMAIL);
+    const found = existing?.users?.find((u) => u.email?.toLowerCase() === rawEnvEmail);
 
     let userId: string;
     if (!found) {
       const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
         email: data.email,
-        password: ADMIN_PASSWORD,
+        password: rawEnvPassword,
         email_confirm: true,
         user_metadata: { display_name: "Administrator" },
       });
@@ -1332,7 +1332,7 @@ export const ensureAdminAccount = createServerFn({ method: "POST" })
       userId = found.id;
       // Make sure password matches what we expect (idempotent reset)
       await supabaseAdmin.auth.admin.updateUserById(userId, {
-        password: ADMIN_PASSWORD,
+        password: rawEnvPassword,
         email_confirm: true,
       });
     }

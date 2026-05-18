@@ -22,7 +22,7 @@ export const Route = createFileRoute("/app")({
   component: AppShell,
 });
 
-type Tab = "chat" | "knowledge" | "analytics" | "admin" | "settings";
+type Tab = "chat" | "knowledge" | "analytics" | "admin" | "settings" | "logs";
 
 function AppShell() {
   const { user, loading, signOut } = useAuth();
@@ -55,6 +55,7 @@ function AppShell() {
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; admin?: boolean }[] = [
     { id: "knowledge", label: "Knowledge", icon: Database },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
+    { id: "logs", label: "Logs", icon: FileText },
     { id: "admin", label: "Admin", icon: Shield, admin: true },
     { id: "settings", label: "Settings", icon: Settings },
   ];
@@ -83,6 +84,7 @@ function AppShell() {
       <main className="flex-1 overflow-hidden">
         {tab === "knowledge" && <KnowledgeTab />}
         {tab === "analytics" && <AnalyticsTab />}
+        {tab === "logs" && <LogsTab />}
         {tab === "admin" && isAdmin && <AdminTab />}
         {tab === "settings" && <SettingsTab />}
       </main>
@@ -352,15 +354,14 @@ function AnalyticsTab() {
   const [logSearch, setLogSearch] = useState("");
   const [logFrom, setLogFrom] = useState("");
   const [logTo, setLogTo] = useState("");
-  if (a.isLoading || !a.data) return <div className="p-8"><Loader2 className="animate-spin" /></div>;
-  const data = a.data;
-  const t = data.totals;
+
   const filteredLogs = useMemo(() => {
+    if (!a.data?.recentLogs) return [];
     const query = logSearch.trim().toLowerCase();
     const fromMs = logFrom ? new Date(`${logFrom}T00:00:00`).getTime() : null;
     const toMs = logTo ? new Date(`${logTo}T23:59:59.999`).getTime() : null;
 
-    return (data.recentLogs ?? []).filter((log: any) => {
+    return (a.data.recentLogs ?? []).filter((log: any) => {
       const createdAt = new Date(log.created_at).getTime();
       const text = [log.question, log.event_label, log.event_type, log.model]
         .filter(Boolean)
@@ -371,7 +372,11 @@ function AnalyticsTab() {
       const matchesTo = toMs == null || createdAt <= toMs;
       return matchesText && matchesFrom && matchesTo;
     });
-  }, [data.recentLogs, logFrom, logSearch, logTo]);
+  }, [a.data?.recentLogs, logFrom, logSearch, logTo]);
+
+  if (a.isLoading || !a.data) return <div className="p-8"><Loader2 className="animate-spin" /></div>;
+  const data = a.data;
+  const t = data.totals;
   const cards = [
     { label: "Total queries", value: t.queries },
     { label: "Out-of-scope rejected", value: t.rejected },
@@ -638,6 +643,147 @@ function SettingsTab() {
         <div className="glass-card rounded-2xl p-6 space-y-3">
           <div><div className="text-xs text-muted-foreground">Email</div><div>{user?.email}</div></div>
           <div><div className="text-xs text-muted-foreground">User ID</div><div className="font-mono text-xs">{user?.id}</div></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ LOGS ============
+function LogsTab() {
+  const fn = useServerFn(getAnalytics);
+  const a = useQuery({ queryKey: ["analytics"], queryFn: () => fn() });
+  const [logSearch, setLogSearch] = useState("");
+  const [logFrom, setLogFrom] = useState("");
+  const [logTo, setLogTo] = useState("");
+
+  const filteredLogs = useMemo(() => {
+    if (!a.data?.recentLogs) return [];
+    const query = logSearch.trim().toLowerCase();
+    const fromMs = logFrom ? new Date(`${logFrom}T00:00:00`).getTime() : null;
+    const toMs = logTo ? new Date(`${logTo}T23:59:59.999`).getTime() : null;
+
+    return (a.data.recentLogs ?? []).filter((log: any) => {
+      const createdAt = new Date(log.created_at).getTime();
+      const text = [log.question, log.event_label, log.event_type, log.model]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const matchesText = !query || text.includes(query);
+      const matchesFrom = fromMs == null || createdAt >= fromMs;
+      const matchesTo = toMs == null || createdAt <= toMs;
+      return matchesText && matchesFrom && matchesTo;
+    });
+  }, [a.data?.recentLogs, logFrom, logSearch, logTo]);
+
+  if (a.isLoading || !a.data) {
+    return (
+      <div className="h-screen flex items-center justify-center text-muted-foreground">
+        <Loader2 className="animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-screen overflow-y-auto p-8 animate-fade-in">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-3xl font-display font-bold mb-2">Activity logs</h1>
+          <p className="text-muted-foreground">All question prompts sent to the AI model and system events.</p>
+        </div>
+
+        <div className="glass-card rounded-2xl p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-6">
+            <div className="text-sm text-muted-foreground">
+              Showing {filteredLogs.length} of {(a.data.recentLogs ?? []).length} logged events
+            </div>
+          </div>
+          
+          <div className="grid gap-3 md:grid-cols-3 mb-6">
+            <label className="block">
+              <span className="text-xs text-muted-foreground font-semibold">Search</span>
+              <input
+                value={logSearch}
+                onChange={(e) => setLogSearch(e.target.value)}
+                placeholder="Search question, model, or label"
+                className="mt-1.5 w-full px-3 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs text-muted-foreground font-semibold">From date</span>
+              <input
+                type="date"
+                value={logFrom}
+                onChange={(e) => setLogFrom(e.target.value)}
+                className="mt-1.5 w-full px-3 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary text-sm"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs text-muted-foreground font-semibold">To date</span>
+              <input
+                type="date"
+                value={logTo}
+                onChange={(e) => setLogTo(e.target.value)}
+                className="mt-1.5 w-full px-3 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary text-sm"
+              />
+            </label>
+          </div>
+
+          <div className="space-y-3">
+            {filteredLogs.map((log: any, i: number) => {
+              const isOpen = log.event_type === "chat_open";
+              return (
+                <div key={`${log.created_at}-${i}`} className="glass rounded-xl p-4 text-sm hover:border-primary/30 transition shadow-sm bg-black/5">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${isOpen ? "bg-secondary/60 text-secondary-foreground" : "bg-primary/10 text-primary"}`}>
+                          {log.event_type ?? "question"}
+                        </span>
+                        {log.rejected && (
+                          <span className="px-2 py-0.5 rounded-full bg-destructive/20 text-destructive text-[11px] font-semibold">
+                            rejected
+                          </span>
+                        )}
+                        {log.event_label && (
+                          <span className="text-xs text-muted-foreground">
+                            • {log.event_label}
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-medium text-foreground mb-1.5 break-words font-mono bg-black/10 p-3 rounded-lg border border-white/5 max-h-48 overflow-y-auto whitespace-pre-wrap">
+                        {log.question || "(no content)"}
+                      </div>
+                      {log.model && (
+                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-2">
+                          <span className="font-semibold text-primary/80">Model:</span>
+                          <span className="font-mono bg-primary/5 px-1.5 py-0.5 rounded">{log.model}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="shrink-0 text-left md:text-right text-xs text-muted-foreground mt-3 md:mt-0 flex flex-row md:flex-col justify-between md:justify-center border-t border-white/5 pt-2 md:pt-0 md:border-0 font-mono">
+                      <div>{new Date(log.created_at).toLocaleString()}</div>
+                      <div className="md:mt-1.5">
+                        {isOpen ? "open" : (
+                          <>
+                            Confidence: <span className="font-semibold text-foreground">{(Number(log.confidence ?? 0) * 100).toFixed(0)}%</span>
+                            <span className="mx-1.5">•</span>
+                            Latency: <span className="font-semibold text-foreground">{log.latency_ms ?? 0}ms</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filteredLogs.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                No logs match the current filters.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
