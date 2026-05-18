@@ -1305,8 +1305,9 @@ export const ensureAdminAccount = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     // Sanitize .env values (strip accidental quotes/whitespace) and compare trimmed inputs
-    const rawEnvEmail = process.env.ADMIN_USERID ?? "admin@yourdomain.com";
+    const rawEnvEmail = process.env.ADMIN_USERID;
     const rawEnvPassword = process.env.ADMIN_PASSWORD ?? "";
+    if (!rawEnvEmail) throw new Error("ADMIN_USERID environment variable is not set.");
     const providedEmail = String(data.email ?? "").toLowerCase().trim();
     const providedPassword = String(data.password ?? "");
     if (providedEmail !== ADMIN_EMAIL || (ADMIN_PASSWORD && providedPassword !== ADMIN_PASSWORD)) {
