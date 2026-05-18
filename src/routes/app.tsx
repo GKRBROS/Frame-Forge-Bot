@@ -5,7 +5,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "react-toastify";
 import {
   Sparkles, Database, Settings, Shield, BarChart3,
-  Upload, Trash2, LogOut, FileText, AlertCircle, CheckCircle2, Loader2, Download
+  Upload, Trash2, LogOut, FileText, AlertCircle, CheckCircle2, Loader2, Download,
+  MessageSquare, Terminal, HelpCircle, Calendar, Cpu, Coins, ChevronDown, ChevronUp,
+  Copy, Check, Filter, XCircle, Search, Clock, AlertTriangle
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,7 +58,7 @@ function AppShell() {
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; admin?: boolean }[] = [
     { id: "knowledge", label: "Knowledge", icon: Database },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
-    { id: "logs", label: "Logs", icon: FileText },
+    { id: "logs", label: "Logs", icon: Terminal },
     { id: "admin", label: "Admin", icon: Shield, admin: true },
     { id: "settings", label: "Settings", icon: Settings },
   ];
@@ -702,6 +704,21 @@ function LogsTab() {
   const [logSearch, setLogSearch] = useState("");
   const [logFrom, setLogFrom] = useState("");
   const [logTo, setLogTo] = useState("");
+  const [eventTypeFilter, setEventTypeFilter] = useState<"all" | "question" | "chat_open" | "rejected">("all");
+  const [expandedLogIds, setExpandedLogIds] = useState<Record<string, boolean>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopy = (text: string, id: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1500);
+    toast.success("Copied to clipboard!");
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedLogIds((p) => ({ ...p, [id]: !p[id] }));
+  };
 
   const filteredLogs = useMemo(() => {
     if (!a.data?.recentLogs) return [];
@@ -711,6 +728,12 @@ function LogsTab() {
 
     return (a.data.recentLogs ?? []).filter((log: any) => {
       const createdAt = new Date(log.created_at).getTime();
+      
+      // Filter by type
+      if (eventTypeFilter === "question" && log.event_type !== "question") return false;
+      if (eventTypeFilter === "chat_open" && log.event_type !== "chat_open") return false;
+      if (eventTypeFilter === "rejected" && !log.rejected) return false;
+
       const text = [log.question, log.event_label, log.event_type, log.model]
         .filter(Boolean)
         .join(" ")
@@ -720,7 +743,23 @@ function LogsTab() {
       const matchesTo = toMs == null || createdAt <= toMs;
       return matchesText && matchesFrom && matchesTo;
     });
-  }, [a.data?.recentLogs, logFrom, logSearch, logTo]);
+  }, [a.data?.recentLogs, logFrom, logSearch, logTo, eventTypeFilter]);
+
+  const stats = useMemo(() => {
+    const total = filteredLogs.length;
+    const chatOpens = filteredLogs.filter((l) => l.event_type === "chat_open").length;
+    const questions = filteredLogs.filter((l) => l.event_type === "question").length;
+    const rejections = filteredLogs.filter((l) => l.rejected).length;
+    
+    const latencyLogs = filteredLogs.filter((l) => l.latency_ms);
+    const avgLatency = latencyLogs.length
+      ? Math.round(latencyLogs.reduce((s, l) => s + (l.latency_ms ?? 0), 0) / latencyLogs.length)
+      : 0;
+
+    const totalTokens = filteredLogs.reduce((s, l) => s + (l.tokens_in ?? 0) + (l.tokens_out ?? 0), 0);
+
+    return { total, chatOpens, questions, rejections, avgLatency, totalTokens };
+  }, [filteredLogs]);
 
   if (a.isLoading || !a.data) {
     return (
@@ -730,107 +769,398 @@ function LogsTab() {
     );
   }
 
+  const hasActiveFilters = logSearch || logFrom || logTo || eventTypeFilter !== "all";
+
+  const clearFilters = () => {
+    setLogSearch("");
+    setLogFrom("");
+    setLogTo("");
+    setEventTypeFilter("all");
+    toast.info("Filters cleared");
+  };
+
   return (
-    <div className="h-screen overflow-y-auto p-8 animate-fade-in">
+    <div className="h-screen overflow-y-auto p-6 md:p-8 animate-fade-in bg-background">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-display font-bold mb-2">Activity logs</h1>
-          <p className="text-muted-foreground">All question prompts sent to the AI model and system events.</p>
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-border/40 pb-5">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 grid place-items-center text-primary">
+                <Terminal className="w-4 h-4" />
+              </div>
+              <h1 className="text-3xl font-display font-bold">Activity Logs</h1>
+            </div>
+            <p className="text-muted-foreground text-sm">
+              Real-time monitoring console for all user chats, model questions, latencies, and system events.
+            </p>
+          </div>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="text-xs px-3.5 py-2 rounded-xl glass hover:border-destructive/30 hover:text-destructive flex items-center gap-1.5 self-start md:self-center transition"
+            >
+              <XCircle className="w-3.5 h-3.5" /> Clear active filters
+            </button>
+          )}
         </div>
 
-        <div className="glass-card rounded-2xl p-6">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-6">
-            <div className="text-sm text-muted-foreground">
-              Showing {filteredLogs.length} of {(a.data.recentLogs ?? []).length} logged events
+        {/* Dashboard Analytics Bar */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+          <div className="glass-card rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Total Events</div>
+              <div className="text-xl font-bold font-mono text-foreground mt-0.5">{stats.total}</div>
             </div>
           </div>
-          
-          <div className="grid gap-3 md:grid-cols-3 mb-6">
-            <label className="block">
-              <span className="text-xs text-muted-foreground font-semibold">Search</span>
-              <input
-                value={logSearch}
-                onChange={(e) => setLogSearch(e.target.value)}
-                placeholder="Search question, model, or label"
-                className="mt-1.5 w-full px-3 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs text-muted-foreground font-semibold">From date</span>
-              <input
-                type="date"
-                value={logFrom}
-                onChange={(e) => setLogFrom(e.target.value)}
-                className="mt-1.5 w-full px-3 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs text-muted-foreground font-semibold">To date</span>
-              <input
-                type="date"
-                value={logTo}
-                onChange={(e) => setLogTo(e.target.value)}
-                className="mt-1.5 w-full px-3 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary text-sm"
-              />
-            </label>
+
+          <div className="glass-card rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+              <MessageSquare className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Chat Opens</div>
+              <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">{stats.chatOpens}</div>
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {filteredLogs.map((log: any, i: number) => {
-              const isOpen = log.event_type === "chat_open";
-              return (
-                <div key={`${log.created_at}-${i}`} className="glass rounded-xl p-4 text-sm hover:border-primary/30 transition shadow-sm bg-black/5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${isOpen ? "bg-secondary/60 text-secondary-foreground" : "bg-primary/10 text-primary"}`}>
-                          {log.event_type ?? "question"}
+          <div className="glass-card rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Questions</div>
+              <div className="text-xl font-bold font-mono text-blue-400 mt-0.5">{stats.questions}</div>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-400 shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Rejections</div>
+              <div className="text-xl font-bold font-mono text-rose-400 mt-0.5">{stats.rejections}</div>
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl p-4 col-span-2 md:col-span-1 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 shrink-0">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Avg Latency</div>
+              <div className="text-xl font-bold font-mono text-amber-400 mt-0.5">{stats.avgLatency}ms</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Console */}
+        <div className="glass-card rounded-2xl p-5 shadow-soft border border-border/40">
+          <div className="grid gap-4 md:grid-cols-4">
+            
+            {/* Search input */}
+            <div className="relative md:col-span-2">
+              <span className="text-xs text-muted-foreground font-semibold mb-1.5 block">Search content</span>
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                  placeholder="Search questions, models, labels..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary transition text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Filter by event type */}
+            <div>
+              <span className="text-xs text-muted-foreground font-semibold mb-1.5 block">Filter Type</span>
+              <div className="relative">
+                <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <select
+                  value={eventTypeFilter}
+                  onChange={(e) => setEventTypeFilter(e.target.value as any)}
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary transition text-sm appearance-none cursor-pointer"
+                >
+                  <option value="all">All Events</option>
+                  <option value="question">Questions Only</option>
+                  <option value="chat_open">Chat Opens Only</option>
+                  <option value="rejected">Rejections Only</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Date ranges */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-xs text-muted-foreground font-semibold mb-1.5 block">From</span>
+                <input
+                  type="date"
+                  value={logFrom}
+                  onChange={(e) => setLogFrom(e.target.value)}
+                  className="w-full px-2.5 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary transition text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground font-semibold mb-1.5 block">To</span>
+                <input
+                  type="date"
+                  value={logTo}
+                  onChange={(e) => setLogTo(e.target.value)}
+                  className="w-full px-2.5 py-2.5 rounded-xl bg-input border border-border outline-none focus:border-primary transition text-xs"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Logs Interactive Accordion */}
+        <div className="space-y-3">
+          {filteredLogs.map((log: any, i: number) => {
+            const uniqueId = `${log.created_at}-${i}`;
+            const isOpenEvent = log.event_type === "chat_open";
+            const isExpanded = !!expandedLogIds[uniqueId];
+
+            // Latency Speed Grader
+            const latency = log.latency_ms ?? 0;
+            const latencyColor =
+              latency < 500
+                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/10"
+                : latency < 2000
+                ? "text-amber-400 bg-amber-500/10 border-amber-500/10"
+                : "text-rose-400 bg-rose-500/10 border-rose-500/10";
+
+            // Confidence Score Grader
+            const confidence = Number(log.confidence ?? 0);
+            const confColor =
+              log.rejected
+                ? "bg-rose-500"
+                : confidence > 0.75
+                ? "bg-emerald-500"
+                : confidence > 0.4
+                ? "bg-amber-500"
+                : "bg-rose-500";
+
+            return (
+              <div
+                key={uniqueId}
+                className={`glass rounded-2xl border transition duration-200 shadow-sm overflow-hidden ${
+                  isExpanded ? "border-primary/45 bg-black/15 shadow-md" : "border-border/30 hover:border-primary/25 bg-black/5"
+                }`}
+              >
+                
+                {/* Accordion Trigger Header */}
+                <div
+                  onClick={() => toggleExpand(uniqueId)}
+                  className="p-4 flex items-center justify-between cursor-pointer select-none gap-4 hover:bg-white/5 transition"
+                >
+                  <div className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-3">
+                    
+                    {/* Event Type & Action Icon */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isOpenEvent ? (
+                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <MessageSquare className="w-3 h-3" /> Chat Open
                         </span>
-                        {log.rejected && (
-                          <span className="px-2 py-0.5 rounded-full bg-destructive/20 text-destructive text-[11px] font-semibold">
-                            rejected
-                          </span>
-                        )}
-                        {log.event_label && (
-                          <span className="text-xs text-muted-foreground">
-                            • {log.event_label}
-                          </span>
-                        )}
-                      </div>
-                      <div className="font-medium text-foreground mb-1.5 break-words font-mono bg-black/10 p-3 rounded-lg border border-white/5 max-h-48 overflow-y-auto whitespace-pre-wrap">
-                        {log.question || "(no content)"}
-                      </div>
+                      ) : log.rejected ? (
+                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/20">
+                          <AlertTriangle className="w-3 h-3 animate-pulse" /> Rejected
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                          <Sparkles className="w-3 h-3" /> Query
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Content Snippet */}
+                    <div className="min-w-0 flex-1 text-sm font-medium text-foreground truncate max-w-lg">
+                      {log.question ? log.question : <span className="text-muted-foreground italic">(Session initialized or empty question)</span>}
+                    </div>
+
+                    {/* Metadata summary (time & model) */}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0 font-mono">
+                      <span>{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       {log.model && (
-                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-2">
-                          <span className="font-semibold text-primary/80">Model:</span>
-                          <span className="font-mono bg-primary/5 px-1.5 py-0.5 rounded">{log.model}</span>
+                        <>
+                          <span className="text-muted-foreground/30">•</span>
+                          <span className="text-[11px] bg-primary/5 px-2 py-0.5 rounded border border-white/5 truncate max-w-36">{log.model.split('/').pop()}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Accordion Arrow Indicator */}
+                  <div className="shrink-0 text-muted-foreground hover:text-foreground p-1 transition">
+                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </div>
+                </div>
+
+                {/* Collapsible Details Content */}
+                {isExpanded && (
+                  <div className="border-t border-border/30 bg-black/10 px-5 py-5 space-y-4 animate-fade-in text-sm">
+                    
+                    {/* Performance & Token Metrics Row */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+                      
+                      {/* Metric: Model */}
+                      <div className="glass rounded-xl p-3 flex items-start gap-2.5 border border-white/5 bg-white/5">
+                        <Cpu className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                        <div>
+                          <div className="text-[10px] uppercase font-bold text-muted-foreground">OpenRouter Model</div>
+                          <div className="font-mono text-xs font-semibold mt-0.5 break-all">
+                            {log.model || "System (no model used)"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Metric: Latency */}
+                      <div className="glass rounded-xl p-3 flex items-start gap-2.5 border border-white/5 bg-white/5">
+                        <Clock className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                        <div>
+                          <div className="text-[10px] uppercase font-bold text-muted-foreground">Query Latency</div>
+                          {isOpenEvent ? (
+                            <div className="text-xs font-semibold mt-0.5 text-muted-foreground">N/A</div>
+                          ) : (
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              <span className="font-mono text-sm font-semibold">{latency}ms</span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold uppercase tracking-wide ${latencyColor}`}>
+                                {latency < 500 ? "fast" : latency < 2000 ? "normal" : "slow"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Metric: Confidence */}
+                      <div className="glass rounded-xl p-3 flex items-start gap-2.5 border border-white/5 bg-white/5">
+                        <HelpCircle className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                        <div className="w-full">
+                          <div className="text-[10px] uppercase font-bold text-muted-foreground">Confidence Ratio</div>
+                          {isOpenEvent ? (
+                            <div className="text-xs font-semibold mt-0.5 text-muted-foreground">N/A</div>
+                          ) : (
+                            <div className="mt-1 w-full">
+                              <div className="flex items-center justify-between text-xs font-semibold font-mono mb-1">
+                                <span>{(confidence * 100).toFixed(0)}%</span>
+                                <span className={log.rejected ? "text-rose-400" : confidence > 0.75 ? "text-emerald-400" : "text-amber-400"}>
+                                  {log.rejected ? "Rejected" : confidence > 0.75 ? "Confident" : "Low"}
+                                </span>
+                              </div>
+                              <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-300 ${confColor}`}
+                                  style={{ width: `${Math.min(100, Math.max(0, confidence * 100))}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Metric: Tokens */}
+                      <div className="glass rounded-xl p-3 flex items-start gap-2.5 border border-white/5 bg-white/5">
+                        <Coins className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                        <div>
+                          <div className="text-[10px] uppercase font-bold text-muted-foreground">Token Cost</div>
+                          {isOpenEvent ? (
+                            <div className="text-xs font-semibold mt-0.5 text-muted-foreground">N/A</div>
+                          ) : (
+                            <div className="mt-0.5 font-mono text-xs flex flex-col gap-0.5">
+                              <div>In: <span className="font-semibold text-foreground">{log.tokens_in ?? 0}</span></div>
+                              <div>Out: <span className="font-semibold text-foreground">{log.tokens_out ?? 0}</span></div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Prompt Inspector Panel */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+                          <Terminal className="w-3.5 h-3.5 text-primary" /> Prompt Query inspector
+                        </span>
+                        {log.question && (
+                          <button
+                            onClick={() => handleCopy(log.question, `q-${uniqueId}`)}
+                            className="text-[11px] text-muted-foreground hover:text-primary transition flex items-center gap-1"
+                          >
+                            {copiedId === `q-${uniqueId}` ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-400" /> Copied!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" /> Copy prompt
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                      <div className="font-mono text-xs p-4 rounded-xl bg-black/40 border border-white/5 overflow-x-auto whitespace-pre-wrap leading-relaxed select-all max-h-72 shadow-inner text-muted-foreground hover:text-foreground transition duration-150">
+                        {log.question || <span className="italic text-muted-foreground/50">(No prompt content logged)</span>}
+                      </div>
+                    </div>
+
+                    {/* Metadata Footer: Date, Conv ID */}
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between text-xs text-muted-foreground/75 font-mono pt-2 border-t border-white/5 gap-2">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 shrink-0" />
+                        <span>Created: {new Date(log.created_at).toLocaleString()}</span>
+                      </div>
+                      {log.conversation_id && (
+                        <div className="flex items-center gap-1.5">
+                          <span>Thread ID:</span>
+                          <span className="bg-black/20 px-1.5 py-0.5 rounded text-[11px] font-semibold text-foreground select-all break-all">
+                            {log.conversation_id}
+                          </span>
+                          <button
+                            onClick={() => handleCopy(log.conversation_id, `cid-${uniqueId}`)}
+                            className="hover:text-primary transition shrink-0"
+                            title="Copy Thread ID"
+                          >
+                            {copiedId === `cid-${uniqueId}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
                         </div>
                       )}
                     </div>
 
-                    <div className="shrink-0 text-left md:text-right text-xs text-muted-foreground mt-3 md:mt-0 flex flex-row md:flex-col justify-between md:justify-center border-t border-white/5 pt-2 md:pt-0 md:border-0 font-mono">
-                      <div>{new Date(log.created_at).toLocaleString()}</div>
-                      <div className="md:mt-1.5">
-                        {isOpen ? "open" : (
-                          <>
-                            Confidence: <span className="font-semibold text-foreground">{(Number(log.confidence ?? 0) * 100).toFixed(0)}%</span>
-                            <span className="mx-1.5">•</span>
-                            Latency: <span className="font-semibold text-foreground">{log.latency_ms ?? 0}ms</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
                   </div>
-                </div>
-              );
-            })}
-            {filteredLogs.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                No logs match the current filters.
+                )}
               </div>
-            )}
-          </div>
+            );
+          })}
+
+          {filteredLogs.length === 0 && (
+            <div className="glass-card rounded-2xl p-12 text-center text-muted-foreground border border-dashed border-border/60">
+              <AlertCircle className="w-8 h-8 mx-auto mb-3 text-muted-foreground/60" />
+              <div className="font-medium text-foreground">No events match search filters</div>
+              <p className="text-xs mt-1 max-w-sm mx-auto">
+                Try modifying your query text, shifting dates, or switching the filter selection category.
+              </p>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="mt-4 px-4 py-2 text-xs rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition inline-flex items-center gap-1.5"
+                >
+                  <XCircle className="w-3.5 h-3.5" /> Reset all active filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
+
       </div>
     </div>
   );

@@ -1386,6 +1386,8 @@ export const getAnalytics = createServerFn({ method: "GET" })
       rejected: l.rejected,
       latency_ms: l.latency_ms,
       model: l.model,
+      tokens_in: l.tokens_in,
+      tokens_out: l.tokens_out,
       created_at: l.created_at,
     }));
 
