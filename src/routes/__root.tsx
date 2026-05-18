@@ -11,6 +11,7 @@ import {
 import appCss from "../styles.css?url";
 import toastifyCss from "react-toastify/dist/ReactToastify.css?url";
 import { ToastContainer } from "react-toastify";
+import { useTheme } from "@/hooks/useTheme";
 
 function NotFoundComponent() {
   return (
@@ -126,11 +127,12 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const { theme } = useTheme();
 
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
-      <ToastContainer position="top-right" autoClose={4000} theme="dark" />
+      <ToastContainer position="top-right" autoClose={4000} theme={theme} />
     </QueryClientProvider>
   );
 }

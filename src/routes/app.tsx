@@ -17,6 +17,7 @@ import {
   listUsers, setUserAdmin,
 } from "@/lib/rag.functions";
 import { Mermaid } from "@/components/Mermaid";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -76,10 +77,15 @@ function AppShell() {
             <t.icon className="w-4 h-4" />{t.label}
           </button>
         ))}
-        <div className="mt-auto pt-4 border-t border-border">
-          <div className="text-xs text-muted-foreground px-2 mb-2 truncate">{user.email}</div>
-          {isAdmin && <div className="text-xs px-2 mb-2"><span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary">Admin</span></div>}
-          <button onClick={() => signOut()} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-secondary/50">
+        <div className="mt-auto pt-4 border-t border-border space-y-2">
+          <div className="flex items-center justify-between px-2 gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-muted-foreground truncate">{user.email}</div>
+              {isAdmin && <div className="text-[10px] mt-0.5"><span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">Admin</span></div>}
+            </div>
+            <ThemeToggle className="scale-90 shrink-0" />
+          </div>
+          <button onClick={() => signOut()} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-secondary/50 transition">
             <LogOut className="w-4 h-4" /> Sign out
           </button>
         </div>
