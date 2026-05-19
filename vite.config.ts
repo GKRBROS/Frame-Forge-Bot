@@ -22,7 +22,11 @@ export default defineConfig({
       }),
     },
     optimizeDeps: {
-      include: ["react", "react-dom", "use-sync-external-store", "@tanstack/react-start"],
+      // Do NOT include @tanstack/react-start here — it has server-only code
+      // (AsyncLocalStorage / node:async_hooks) that crashes when Vite tries to
+      // pre-bundle it for the browser in dev mode.
+      include: ["react", "react-dom", "use-sync-external-store"],
+      exclude: ["@tanstack/react-start"],
     },
   },
 });
