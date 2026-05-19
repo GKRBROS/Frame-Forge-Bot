@@ -348,19 +348,6 @@ export const getMessages = createServerFn({ method: "POST" })
       .eq("id", data.conversationId)
       .maybeSingle();
 
-    await supabase.from("query_logs").insert({
-      user_id: context.userId,
-      conversation_id: data.conversationId,
-      question: convo?.title ? `Opened conversation: ${convo.title}` : "Opened conversation",
-      event_type: "chat_open" as any,
-      event_label: (convo?.title ?? "Conversation opened") as any,
-      confidence: 1,
-      rejected: false,
-      latency_ms: 0,
-      tokens_in: 0,
-      tokens_out: 0,
-    } as any);
-
     const { data: msgs, error } = await supabase
       .from("messages")
       .select("*")
