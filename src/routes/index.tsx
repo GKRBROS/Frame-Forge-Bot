@@ -424,20 +424,41 @@ function ChatHome() {
                   return;
                 }
                 if (!activeConv) return;
-                if (!confirm('Clear this chat? This will delete the conversation and start a new one.')) return;
-                try {
-                  await deleteConv({ data: { id: activeConv } });
-                  const nw = await createConv({ data: { title: 'Chat' } });
-                  if (nw?.id) {
-                    setActiveConv(nw.id);
-                    setMessages([]);
-                    convs.refetch?.();
-                    toast.success("Chat history cleared!");
-                  }
-                } catch (err: any) {
-                  console.error('clear failed', err);
-                  toast.error(err.message || "Failed to clear chat");
-                }
+                const tId = toast(
+                  <div>
+                    <p className="text-sm font-medium mb-3">Clear this chat? This will delete the conversation and start a new one.</p>
+                    <div className="flex gap-2">
+                      <button 
+                        className="px-3 py-1 bg-destructive text-destructive-foreground text-xs rounded-md"
+                        onClick={async () => {
+                          toast.dismiss(tId);
+                          try {
+                            await deleteConv({ data: { id: activeConv } });
+                            const nw = await createConv({ data: { title: 'Chat' } });
+                            if (nw?.id) {
+                              setActiveConv(nw.id);
+                              setMessages([]);
+                              convs.refetch?.();
+                              toast.success("Chat history cleared!");
+                            }
+                          } catch (err: any) {
+                            console.error('clear failed', err);
+                            toast.error(err.message || "Failed to clear chat");
+                          }
+                        }}
+                      >
+                        Confirm
+                      </button>
+                      <button 
+                        className="px-3 py-1 bg-secondary text-secondary-foreground text-xs rounded-md"
+                        onClick={() => toast.dismiss(tId)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>,
+                  { autoClose: false, closeOnClick: false }
+                );
               }}
               className="text-xs text-muted-foreground hover:text-destructive"
             >Clear chat</button>

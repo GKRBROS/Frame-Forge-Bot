@@ -289,17 +289,38 @@ function KnowledgeTab() {
 
   async function handleDeleteCategory(category: string) {
     const categoryDocs = groupedDocs[category] ?? [];
-    if (!confirm(`Are you sure you want to delete the category "${category === "default" ? "General" : category}" and all its ${categoryDocs.length} items?`)) return;
-    setBusy(true);
-    try {
-      await Promise.all(categoryDocs.map((d: any) => del({ data: { id: d.id } })));
-      toast.success(`Deleted category and all its items successfully!`);
-      qc.invalidateQueries({ queryKey: ["docs"] });
-    } catch (e: any) {
-      toast.error(e.message || "Failed to delete category");
-    } finally {
-      setBusy(false);
-    }
+    const tId = toast(
+      <div>
+        <p className="text-sm font-medium mb-3">Are you sure you want to delete the category "{category === "default" ? "General" : category}" and all its {categoryDocs.length} items?</p>
+        <div className="flex gap-2">
+          <button 
+            className="px-3 py-1 bg-destructive text-destructive-foreground text-xs rounded-md"
+            onClick={async () => {
+              toast.dismiss(tId);
+              setBusy(true);
+              try {
+                await Promise.all(categoryDocs.map((d: any) => del({ data: { id: d.id } })));
+                toast.success(`Deleted category and all its items successfully!`);
+                qc.invalidateQueries({ queryKey: ["docs"] });
+              } catch (e: any) {
+                toast.error(e.message || "Failed to delete category");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Confirm
+          </button>
+          <button 
+            className="px-3 py-1 bg-secondary text-secondary-foreground text-xs rounded-md"
+            onClick={() => toast.dismiss(tId)}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>,
+      { autoClose: false, closeOnClick: false }
+    );
   }
 
   async function handleMoveDocCategory(docId: string, newCat: string) {
