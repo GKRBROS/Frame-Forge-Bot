@@ -255,9 +255,9 @@ function ChatHome() {
             ) : (
               <motion.div key="msgs" className="space-y-5 w-full max-w-3xl mx-auto">
                 {messages.map((m, i) => (
-                  <MessageBubble key={i} msg={m} showCitations={showCitations} />
+                  <MessageBubble key={i} msg={m} showCitations={showCitations} isNew={i === messages.length - 1} />
                 ))}
-                {loading && <TypingIndicator />}
+                {loading && <TypingIndicator mode={mode} />}
               </motion.div>
             )}
             </AnimatePresence>
@@ -476,7 +476,7 @@ function ChatHome() {
   );
 }
 
-function MessageBubble({ msg, showCitations }: { msg: Msg; showCitations?: boolean }) {
+function MessageBubble({ msg, showCitations, isNew }: { msg: Msg; showCitations?: boolean; isNew?: boolean }) {
   const isUser = msg.role === "user";
   return (
     <motion.div
@@ -512,7 +512,7 @@ function MessageBubble({ msg, showCitations }: { msg: Msg; showCitations?: boole
             </div>
           ) : (
             <div className="leading-relaxed text-[15px] space-y-3">
-              <SafeMarkdown content={msg.content} />
+              <SafeMarkdown content={msg.content} stream={isNew} />
               {msg.imageUrl && (
                 <div className="mt-4 group relative rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-black/20">
                   <img 
@@ -578,7 +578,17 @@ function MessageBubble({ msg, showCitations }: { msg: Msg; showCitations?: boole
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ mode }: { mode?: 'text' | 'image' }) {
+  if (mode === 'image') {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+        <div className="glass-card rounded-2xl rounded-bl-md px-5 py-4 flex items-center gap-3">
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          <span className="text-sm font-medium text-muted-foreground animate-pulse">Generating diagram...</span>
+        </div>
+      </motion.div>
+    );
+  }
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
       <div className="glass-card rounded-2xl rounded-bl-md px-5 py-4 flex items-center gap-1.5">
