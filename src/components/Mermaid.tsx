@@ -1,12 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import mermaid from 'mermaid';
-
-mermaid.initialize({
-  startOnLoad: true,
-  theme: 'dark',
-  securityLevel: 'loose',
-  fontFamily: 'inherit',
-});
 
 interface MermaidProps {
   chart: string;
@@ -17,22 +9,36 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
 
   useEffect(() => {
     if (ref.current && chart) {
-      mermaid.contentLoaded();
-      // Use a unique ID for each diagram to avoid conflicts
-      const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
-      
-      try {
-        mermaid.render(id, chart).then(({ svg }) => {
-          if (ref.current) {
-            ref.current.innerHTML = svg;
+      // Dynamically load mermaid library only on the client side
+      import('mermaid')
+        .then((m) => {
+          const mermaid = m.default;
+          mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            securityLevel: 'loose',
+            fontFamily: 'inherit',
+          });
+
+          mermaid.contentLoaded();
+          const id = `mermaid-${Math.random().toString(36).substring(2, 11)}`;
+
+          try {
+            mermaid.render(id, chart).then(({ svg }) => {
+              if (ref.current) {
+                ref.current.innerHTML = svg;
+              }
+            });
+          } catch (error) {
+            console.error('Mermaid render error:', error);
+            if (ref.current) {
+              ref.current.innerHTML = '<p class="text-destructive text-xs">Failed to render diagram</p>';
+            }
           }
+        })
+        .catch((err) => {
+          console.error('Failed to import mermaid library:', err);
         });
-      } catch (error) {
-        console.error('Mermaid render error:', error);
-        if (ref.current) {
-            ref.current.innerHTML = '<p class="text-destructive text-xs">Failed to render diagram</p>';
-        }
-      }
     }
   }, [chart]);
 

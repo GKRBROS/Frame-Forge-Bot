@@ -18,8 +18,7 @@ import {
 } from "@/lib/rag.functions";
 import { Mermaid } from "@/components/Mermaid";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { SafeMarkdown } from "@/components/SafeMarkdown";
 
 export const Route = createFileRoute("/app")({
   head: () => ({ meta: [{ title: "KnowledgeScope AI — Workspace" }] }),
@@ -27,6 +26,23 @@ export const Route = createFileRoute("/app")({
 });
 
 type Tab = "chat" | "knowledge" | "analytics" | "admin" | "settings" | "logs";
+
+function ClientTime({ date, type = "both" }: { date: string | Date; type?: "both" | "time" }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <span className="opacity-0">Loading...</span>;
+  }
+
+  const d = new Date(date);
+  if (type === "time") {
+    return <span>{d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>;
+  }
+  return <span>{d.toLocaleString()}</span>;
+}
 
 function AppShell() {
   const { user, loading, signOut } = useAuth();
@@ -110,21 +126,7 @@ function MessageBubble({ m, showCitations }: { m: any; showCitations?: boolean }
       </div>
       <div className={`glass-card rounded-2xl px-4 py-3 max-w-[80%] ${m.rejected ? "border-warning/40" : ""}`}>
         <div className="prose prose-invert prose-sm max-w-none">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code: ({ node, className, children, ...props }) => {
-                const match = /language-(\w+)/.exec(className || '');
-                const isMermaid = match && match[1] === 'mermaid';
-                if (isMermaid) {
-                  return <Mermaid chart={String(children).replace(/\n$/, '')} />;
-                }
-                return <code className="rounded bg-black/20 px-1 py-0.5 text-[0.92em]" {...props}>{children}</code>;
-              },
-            }}
-          >
-            {m.content}
-          </ReactMarkdown>
+          <SafeMarkdown content={m.content} />
         </div>
         {m.image_url && (
           <div className="mt-4 group relative rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-black/20">
@@ -801,7 +803,7 @@ function AnalyticsTab() {
             {(a.data.recentRejected ?? []).map((r: any, i: number) => (
               <div key={i} className="text-sm glass rounded-lg px-3 py-2">
                 <div className="truncate">{r.question}</div>
-                <div className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()} · confidence {(Number(r.confidence) * 100).toFixed(0)}%</div>
+                 <div className="text-xs text-muted-foreground"><ClientTime date={r.created_at} /> · confidence {(Number(r.confidence) * 100).toFixed(0)}%</div>
               </div>
             ))}
             {a.data.recentRejected?.length === 0 && <div className="text-sm text-muted-foreground">None — model has never been forced to reject.</div>}
@@ -863,7 +865,7 @@ function AnalyticsTab() {
                       </div>
                     </div>
                     <div className="shrink-0 text-right text-xs text-muted-foreground">
-                      <div>{new Date(log.created_at).toLocaleString()}</div>
+                      <div><ClientTime date={log.created_at} /></div>
                       <div>
                         {isOpen ? "open" : `${(Number(log.confidence ?? 0) * 100).toFixed(0)}%`} · {log.latency_ms ?? 0} ms
                       </div>
@@ -1333,7 +1335,7 @@ function LogsTab() {
 
                     {/* Metadata summary (time & model) */}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0 font-mono">
-                      <span>{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span><ClientTime date={log.created_at} type="time" /></span>
                       {log.model && (
                         <>
                           <span className="text-muted-foreground/30">•</span>
@@ -1461,7 +1463,7 @@ function LogsTab() {
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between text-xs text-muted-foreground/75 font-mono pt-2 border-t border-white/5 gap-2">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 shrink-0" />
-                        <span>Created: {new Date(log.created_at).toLocaleString()}</span>
+                        <span>Created: <ClientTime date={log.created_at} /></span>
                       </div>
                       {log.conversation_id && (
                         <div className="flex items-center gap-1.5">

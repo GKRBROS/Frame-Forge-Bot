@@ -4,8 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "react-toastify";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { SafeMarkdown } from "@/components/SafeMarkdown";
 import { useAuth } from "@/hooks/useAuth";
 import { askPublic, listConversations, getMessages, createConversation, deleteConversation, extractPublicAttachment } from "@/lib/rag.functions";
 import { Sparkles, Send, Shield, Loader2, FileText, BookOpen, Paperclip, X, ChevronDown, Type, Image as ImageIcon, LayoutDashboard, Download } from "lucide-react";
@@ -492,31 +491,7 @@ function MessageBubble({ msg, showCitations }: { msg: Msg; showCitations?: boole
             </div>
           ) : (
             <div className="leading-relaxed text-[15px] space-y-3">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  h1: ({ children }) => <h1 className="text-xl font-semibold mt-2 mb-1">{children}</h1>,
-                  h2: ({ children }) => <h2 className="text-lg font-semibold mt-2 mb-1">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-base font-semibold mt-2 mb-1">{children}</h3>,
-                  p: ({ children }) => <p className="leading-relaxed">{children}</p>,
-                  ul: ({ children }) => <ul className="list-disc pl-5 space-y-1">{children}</ul>,
-                  ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1">{children}</ol>,
-                  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                  em: ({ children }) => <em className="italic">{children}</em>,
-                  code: ({ node, className, children, ...props }) => {
-                    const match = /language-(\w+)/.exec(className || '');
-                    const isMermaid = match && match[1] === 'mermaid';
-                    if (isMermaid) {
-                      return <Mermaid chart={String(children).replace(/\n$/, '')} />;
-                    }
-                    return <code className="rounded bg-black/20 px-1 py-0.5 text-[0.92em]" {...props}>{children}</code>;
-                  },
-                  blockquote: ({ children }) => <blockquote className="border-l-2 border-primary/40 pl-3 italic text-muted-foreground">{children}</blockquote>,
-                }}
-              >
-                {msg.content}
-              </ReactMarkdown>
+              <SafeMarkdown content={msg.content} />
               {msg.imageUrl && (
                 <div className="mt-4 group relative rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-black/20">
                   <img 

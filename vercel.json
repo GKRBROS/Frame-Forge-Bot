@@ -8,15 +8,18 @@
   "routes": [
     {
       "src": "/assets/(.*)",
-      "dest": "/client/assets/$1"
+      "dest": "/dist/client/assets/$1"
     },
     {
       "src": "/favicon.ico",
-      "dest": "/client/favicon.ico"
+      "dest": "/dist/client/favicon.ico"
     },
     {
       "src": "/(.*)",
-      "dest": "/api/ssr"
+      "dest": "/api/ssr",
+      "headers": {
+        "x-original-url": "/$1"
+      }
     }
   ]
 }
